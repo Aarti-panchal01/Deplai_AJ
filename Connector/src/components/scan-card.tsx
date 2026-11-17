@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { usePopup } from '@/components/popup';
 import { FiShield, FiCode, FiPackage, FiGlobe, FiX } from 'react-icons/fi';
+import { errorMessage } from '@/lib/errors';
 
 type ScanType = 'sast' | 'sca' | 'all';
 
@@ -30,7 +31,7 @@ const SCAN_OPTIONS = [
     id: 'sast' as ScanType,
     label: 'SAST',
     sublabel: 'Static Application Security Testing',
-    description: 'Scans source code for vulnerabilities, hardcoded secrets, and insecure patterns using Bearer.',
+    description: 'Scans source code for vulnerabilities, hardcoded secrets, and insecure patterns using Bearer and Semgrep.',
     Icon: FiCode,
     colorCls: 'bg-indigo-500/15 border-indigo-500/30 text-indigo-400',
   },
@@ -118,10 +119,10 @@ export default function ScanModal({ isOpen, onClose, project, onScanComplete }: 
       await response.json();
       onScanComplete({ projectId: project.id, projectName: name });
       handleClose();
-    } catch (error: any) {
+    } catch (error: unknown) {
       showPopup({
         type: 'error',
-        message: error?.message || 'Failed to connect to the backend. Please ensure the server is running.',
+        message: errorMessage(error, 'Failed to connect to the backend. Please ensure the server is running.'),
       });
       setStep('select');
       setSelectedType(null);
@@ -190,7 +191,7 @@ export default function ScanModal({ isOpen, onClose, project, onScanComplete }: 
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-sm font-semibold text-white">{label}</span>
                       <span className="text-xs text-zinc-500">{sublabel}</span>
-                      {(rest as any).recommended && (
+                      {(rest as { recommended?: boolean }).recommended && (
                         <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">Recommended</span>
                       )}
                     </div>

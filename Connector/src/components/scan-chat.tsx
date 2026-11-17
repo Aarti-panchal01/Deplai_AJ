@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { usePopup } from '@/components/popup';
 import { FiShield, FiCode, FiPackage, FiGlobe, FiX, FiChevronRight, FiExternalLink } from 'react-icons/fi';
+import { errorMessage } from '@/lib/errors';
 
 export type ScanType = 'sast' | 'sca' | 'all';
 
@@ -41,7 +42,7 @@ const SCAN_TYPE_OPTIONS = [
     id: 'sast' as ScanType,
     label: 'SAST',
     sublabel: 'Static Code Analysis',
-    desc: 'Scans source code for vulnerabilities and secrets using Bearer.',
+    desc: 'Scans source code for vulnerabilities and secrets using Bearer and Semgrep.',
     colorCls: 'bg-indigo-500/15 border-indigo-500/30 text-indigo-400',
     Icon: FiCode,
   },
@@ -234,8 +235,8 @@ export default function ScanChat({
         500,
       );
       setPhase('done');
-    } catch (err: any) {
-      showPopup({ type: 'error', message: err?.message || 'Failed to start scan' });
+    } catch (err: unknown) {
+      showPopup({ type: 'error', message: errorMessage(err, 'Failed to start scan') });
       setPhase('scan_type');
     }
   };
@@ -345,7 +346,7 @@ export default function ScanChat({
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-sm font-semibold text-white">{label}</span>
                   <span className="text-xs text-zinc-500">{sublabel}</span>
-                  {(rest as any).recommended && (
+                  {(rest as { recommended?: boolean }).recommended && (
                     <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">
                       Recommended
                     </span>

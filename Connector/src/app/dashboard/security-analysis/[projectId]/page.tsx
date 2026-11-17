@@ -1486,7 +1486,7 @@ export default function SecurityAnalysisPage() {
                 </div>
                 <div>
                   <span className="mb-1 block text-zinc-500">Engines</span>
-                  <span className="text-zinc-200">Bearer (SAST), Syft/Grype (SCA)</span>
+                  <span className="text-zinc-200">Bearer + Semgrep (SAST), Syft/Grype (SCA)</span>
                 </div>
               </div>
             </BorderGlow>

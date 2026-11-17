@@ -6,6 +6,7 @@ from typing import Any
 import functools
 
 from remediation_pipeline.models import Vulnerability
+from semgrep_report import parse_semgrep_findings
 from utils import CODEBASE_VOLUME, decode_output, find_volume_file, get_docker_client, read_volume_file
 
 
@@ -41,6 +42,37 @@ class VulnIngester:
         return vulns
 
     def _read_sast(self, project_id: str) -> list[Vulnerability]:
+        bearer = self._read_bearer(project_id)
+        known = {(v.cwe, v.file, v.line_start) for v in bearer}
+        semgrep = [v for v in self._read_semgrep(project_id) if (v.cwe, v.file, v.line_start) not in known]
+        return bearer + semgrep
+
+    def _read_semgrep(self, project_id: str) -> list[Vulnerability]:
+        report = find_volume_file(project_id, "Semgrep.json")
+        raw = read_volume_file(report) if report else None
+        if not raw:
+            return []
+        try:
+            findings = parse_semgrep_findings(raw, project_id)
+        except Exception:
+            return []
+        return [
+            Vulnerability(
+                id=f"semgrep:{f['rule_id']}:{f['filename']}:{f['line_number']}",
+                file=f["filename"],
+                line_start=f["line_number"],
+                line_end=f["end_line"],
+                rule_id=f["rule_id"],
+                severity=f["severity"],
+                description=f["title"],
+                cwe=f["cwe_id"] if f["cwe_id"] != "unknown" else None,
+                type="sast",
+            )
+            for f in findings
+            if f["filename"]
+        ]
+
+    def _read_bearer(self, project_id: str) -> list[Vulnerability]:
         report = find_volume_file(project_id, "Bearer.json")
         raw = read_volume_file(report) if report else None
         if not raw:

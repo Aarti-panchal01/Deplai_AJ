@@ -7,9 +7,10 @@ from models import ScanContext, StreamStatus
 from runner_base import RunnerBase
 from bearer import run_bearer_scan
 from sbom import run_syft_scan, run_grype_scan
-from utils import ensure_docker_image, get_docker_client, decode_output, VOLUME_NAMES, CODEBASE_VOLUME, SECURITY_REPORTS_VOLUME, resolve_host_projects_dir, set_current_project_id
+from semgrep import SEMGREP_IMAGE, run_semgrep_scan, semgrep_enabled
+from utils import sast_scans_ok, ensure_docker_image, get_docker_client, decode_output, VOLUME_NAMES, CODEBASE_VOLUME, SECURITY_REPORTS_VOLUME, resolve_host_projects_dir, set_current_project_id
 
-TOTAL_STEPS = 12
+TOTAL_STEPS = 14
 CONTAINER_OP_TIMEOUT = int(os.getenv("CONTAINER_OP_TIMEOUT", "120"))  # seconds for volume/clone ops
 SCAN_IMAGES = (
     "alpine",
@@ -17,7 +18,7 @@ SCAN_IMAGES = (
     "bearer/bearer:latest-amd64",
     "anchore/syft",
     "anchore/grype",
-)
+) + ((SEMGREP_IMAGE,) if semgrep_enabled() else ())
 
 
 class EnvironmentInitializer(RunnerBase):
@@ -298,6 +299,12 @@ class EnvironmentInitializer(RunnerBase):
             )
             return (success, error_msg, "Bearer")
 
+        async def semgrep_branch() -> tuple[bool, str, str]:
+            success, error_msg = await self._run_step(
+                lambda: run_semgrep_scan(p_name, p_id)
+            )
+            return (success, error_msg, "Semgrep")
+
         async def sbom_branch() -> tuple[bool, str, str]:
             success, error_msg = await self._run_step(
                 lambda: run_syft_scan(p_name, p_id)
@@ -313,6 +320,9 @@ class EnvironmentInitializer(RunnerBase):
         if scan_type in ("sast", "all"):
             await self._send_message("info", "Starting Bearer code security scanner (large repos may take 10-30+ minutes)...")
             tasks.append(bearer_branch())
+            if semgrep_enabled():
+                await self._send_message("info", "Starting Semgrep code security scanner...")
+                tasks.append(semgrep_branch())
         if scan_type in ("sca", "all"):
             await self._send_message("info", "Starting Syft SBOM generation and Grype vulnerability scan (can be long on large repos)...")
             tasks.append(sbom_branch())
@@ -340,7 +350,7 @@ class EnvironmentInitializer(RunnerBase):
             else:
                 await self._send_message("error", f"{tool_name} scan failed: {error_msg}")
 
-        if not all(success for success, _, _ in results):
+        if not sast_scans_ok(results):
             await self._send_status(StreamStatus.error)
             return False
 

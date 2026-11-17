@@ -87,20 +87,35 @@ class RemediationTrackRunner(RunnerBase):
         from bearer import run_bearer_scan
         from result_parser import invalidate_cache
         from sbom import run_grype_scan, run_syft_scan
+        from semgrep import run_semgrep_scan, semgrep_enabled
 
         await self._send_message("phase", "Running verification security scan")
         await self._run_step(lambda: invalidate_cache(self.context.project_id))
 
         scan_steps = [
             ("Bearer", lambda: run_bearer_scan(self.context.project_name, self.context.project_id)),
+        ]
+        if semgrep_enabled():
+            scan_steps.append(("Semgrep", lambda: run_semgrep_scan(self.context.project_name, self.context.project_id)))
+        scan_steps += [
             ("Syft", lambda: run_syft_scan(self.context.project_name, self.context.project_id)),
             ("Grype", lambda: run_grype_scan(self.context.project_name, self.context.project_id)),
         ]
+        sast_labels = {"Bearer", "Semgrep"}
+        sast_ok: list[bool] = []
         for label, scan_step in scan_steps:
             ok, message = await self._run_step(scan_step)
+            if label in sast_labels:
+                sast_ok.append(ok)
             if not ok:
+                # One static-analysis engine failing is tolerated while another succeeds.
+                if label in sast_labels:
+                    await self._send_message("error", f"{label} verification scan failed: {message}")
+                    continue
                 return await self._terminate(f"{label} verification scan failed: {message}")
             await self._send_message("success", f"{label} verification scan completed.")
+        if sast_ok and not any(sast_ok):
+            return await self._terminate("All code security scanners failed during the verification scan.")
 
         await self._run_step(lambda: invalidate_cache(self.context.project_id))
         try:

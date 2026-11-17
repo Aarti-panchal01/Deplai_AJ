@@ -1,9 +1,13 @@
 import json
+import logging
 import threading
 
 import docker
 
+from semgrep_report import parse_semgrep_findings
 from utils import SEVERITY_LEVELS, read_volume_file, find_volume_file, get_docker_client
+
+logger = logging.getLogger(__name__)
 
 # ── In-memory scan results cache ──
 # After the first Docker volume read + parse, cache both the status and full
@@ -56,6 +60,48 @@ def _parse_bearer_report(raw: str) -> list[dict]:
     return findings
 
 
+def _parse_semgrep_report(raw: str, project_id: str) -> list[dict]:
+    """Parse Semgrep JSON into the same CWE-grouped shape as the Bearer findings."""
+    groups: dict[tuple[str, str, str], dict] = {}
+    for item in parse_semgrep_findings(raw, project_id):
+        key = (item["cwe_id"], item["severity"], item["title"])
+        group = groups.setdefault(key, {
+            "cwe_id": item["cwe_id"],
+            "title": item["title"],
+            "severity": item["severity"],
+            "source": "semgrep",
+            "occurrences": [],
+        })
+        group["occurrences"].append({
+            "filename": item["filename"],
+            "line_number": item["line_number"],
+            # Semgrep withholds source lines for registry rules unless logged in.
+            "code_extract": "",
+            "documentation_url": item["documentation_url"],
+            "rule_id": item["rule_id"],
+        })
+    return list(groups.values())
+
+
+def _merge_code_security(bearer_groups: list[dict], semgrep_groups: list[dict]) -> list[dict]:
+    """Combine Bearer and Semgrep groups; drop Semgrep hits that Bearer already reported
+    for the same CWE/file/line, then re-sort the way the Bearer-only report was."""
+    seen = {
+        (g["cwe_id"], o["filename"], o["line_number"])
+        for g in bearer_groups
+        for o in g["occurrences"]
+    }
+    merged = [dict(g) for g in bearer_groups]
+    for group in semgrep_groups:
+        fresh = [o for o in group["occurrences"] if (group["cwe_id"], o["filename"], o["line_number"]) not in seen]
+        if fresh:
+            merged.append({**group, "occurrences": fresh})
+    severity_order = {s: i for i, s in enumerate(SEVERITY_LEVELS)}
+    for g in merged:
+        g["count"] = len(g["occurrences"])
+    return sorted(merged, key=lambda g: (severity_order.get(g["severity"], 99), -g["count"]))
+
+
 def _parse_grype_report(raw: str) -> list[dict]:
     """Parse Grype JSON into supply chain vulnerability data."""
     data = json.loads(raw)
@@ -104,25 +150,38 @@ def _load_and_cache(project_id: str) -> tuple[bool, dict | str]:
             return (False, "No scan reports found. Run a scan first.")
 
         bearer_file = find_volume_file(project_id, "Bearer.json")
+        semgrep_file = find_volume_file(project_id, "Semgrep.json")
         grype_file = find_volume_file(project_id, "Grype.json")
 
         bearer_raw = read_volume_file(bearer_file) if bearer_file else None
+        semgrep_raw = read_volume_file(semgrep_file) if semgrep_file else None
         grype_raw = read_volume_file(grype_file) if grype_file else None
 
-        if bearer_raw is None and grype_raw is None:
+        if bearer_raw is None and semgrep_raw is None and grype_raw is None:
             return (False, "No scan reports found. Run a scan first.")
 
-        if bearer_file and bearer_raw is not None and not bearer_raw.strip():
+        # An empty Bearer report is only fatal when Semgrep did not produce one either.
+        if bearer_file and bearer_raw is not None and not bearer_raw.strip() and not (semgrep_raw or "").strip():
             return (False, "Bearer report is empty; scan may have failed.")
         if grype_file and grype_raw is not None and not grype_raw.strip():
             return (False, "Grype report is empty; scan may have failed.")
 
-        code_security = []
-        if bearer_raw:
+        bearer_groups = []
+        if bearer_raw and bearer_raw.strip():
             try:
-                code_security = _parse_bearer_report(bearer_raw)
+                bearer_groups = _parse_bearer_report(bearer_raw)
             except Exception as e:
                 return (False, f"Failed to parse Bearer report: {e}")
+
+        semgrep_groups = []
+        if semgrep_raw and semgrep_raw.strip():
+            try:
+                semgrep_groups = _parse_semgrep_report(semgrep_raw, project_id)
+            except Exception as e:
+                # Semgrep is additive; keep the Bearer/Grype results if its report is unreadable.
+                logger.warning("Ignoring unreadable Semgrep report for %s: %s", project_id, e)
+
+        code_security = _merge_code_security(bearer_groups, semgrep_groups)
 
         supply_chain = []
         if grype_raw:
