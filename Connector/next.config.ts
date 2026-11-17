@@ -7,6 +7,9 @@ loadEnvConfig(path.resolve(__dirname, ".."));
 
 const nextConfig: NextConfig = {
   reactCompiler: true,
+  // ssh2 ships a native crypto binding (sshcrypto.node) that Turbopack cannot bundle, which made
+  // `next build` fail on the EC2 log route. Load it from node_modules at runtime instead.
+  serverExternalPackages: ["ssh2"],
   images: {
     remotePatterns: [
       {
