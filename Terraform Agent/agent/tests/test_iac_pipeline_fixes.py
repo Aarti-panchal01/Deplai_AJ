@@ -1,11 +1,11 @@
 """Tests for IaC pipeline bug fixes.
 
 Covers:
-- Fix 1: NameError in _execute_run (project_id scope)
+- Fix 1: project_id scope in run_pipeline (formerly _execute_run)
 - Fix 2: terraform_agent package importability
 - Fix 7: .env.template documents ANTHROPIC_API_KEY
 - Fix 8: All eight Terraform template directories exist
-- Property 3: project_id forwarding in _execute_run (hypothesis PBT)
+- Property 3: project_id forwarding in run_pipeline
 """
 
 from __future__ import annotations
@@ -18,34 +18,24 @@ import pytest
 
 
 # ---------------------------------------------------------------------------
-# Fix 1: NameError — _execute_run must use run.project_id
+# Fix 1: run_pipeline must forward project_id
 # ---------------------------------------------------------------------------
 
-class TestExecuteRunProjectId:
-    """Verify _execute_run forwards run.project_id, not a bare variable."""
+class TestRunPipelineProjectId:
+    """Verify run_pipeline forwards project_id to select_params and validate_with_retry."""
 
-    def _make_run(self, project_id: str):
-        from agent.iac_pipeline import IaCRun, RunStatus
-        return IaCRun(
-            run_id="test-run-id",
-            project_id=project_id,
-            service_type="ec2",
-            status=RunStatus.PENDING,
-        )
+    def _run_pipeline(self, project_id: str) -> dict:
+        """Helper: run run_pipeline with all phases mocked and return captured args."""
+        from agent.iac_pipeline import run_pipeline
 
-    def _run_execute(self, project_id: str) -> dict:
-        """Helper: run _execute_run synchronously and return captured args."""
-        from agent.iac_pipeline import _execute_run
-
-        run = self._make_run(project_id)
         captured: dict = {}
 
-        async def mock_select_params(service, repo_ctx, user_cust, region, pid):
-            captured["select_params_pid"] = pid
+        async def mock_select_params(service_type, repo_context, user_customizations, aws_region, project_id):
+            captured["select_params_pid"] = project_id
             return {"instance_name": "test", "aws_region": "us-east-1"}
 
-        async def mock_validate(service, params, pid, creds, **kwargs):
-            captured["validate_pid"] = pid
+        async def mock_validate(service_type, params, project_id, aws_credentials, **kwargs):
+            captured["validate_pid"] = project_id
             return (Path("/tmp/ws"), params)
 
         async def mock_plan(workspace, creds):
@@ -74,20 +64,37 @@ class TestExecuteRunProjectId:
                 patch("agent.iac_pipeline.parse_outputs", mock_parse_outputs),
                 patch("agent.iac_pipeline.extract_keypair_details", mock_extract_keypair),
             ):
-                await _execute_run(run, {}, {}, {}, "us-east-1")
+                run = await run_pipeline(
+                    project_id=project_id,
+                    service_type="ec2",
+                    repo_context={},
+                    user_customizations={},
+                    aws_credentials={},
+                    aws_region="us-east-1",
+                )
+            captured["status"] = run.status
+            captured["error"] = run.error
             return captured
 
         return asyncio.run(_run())
 
-    def test_execute_run_uses_run_project_id(self):
-        """select_params and validate_with_retry must receive run.project_id."""
-        captured = self._run_execute("test-proj")
+    def test_run_pipeline_forwards_project_id(self):
+        """select_params and validate_with_retry must receive the project_id."""
+        from agent.iac_pipeline import RunStatus
+
+        captured = self._run_pipeline("test-proj")
+        assert captured["error"] is None
+        assert captured["status"] == RunStatus.COMPLETED
         assert captured["select_params_pid"] == "test-proj"
         assert captured["validate_pid"] == "test-proj"
 
-    def test_execute_run_empty_project_id_no_name_error(self):
-        """Empty project_id must not raise NameError."""
-        captured = self._run_execute("")
+    def test_run_pipeline_empty_project_id_does_not_fail(self):
+        """Empty project_id must not raise NameError or fail the run."""
+        from agent.iac_pipeline import RunStatus
+
+        captured = self._run_pipeline("")
+        assert captured["error"] is None
+        assert captured["status"] == RunStatus.COMPLETED
         assert captured["select_params_pid"] == ""
         assert captured["validate_pid"] == ""
 

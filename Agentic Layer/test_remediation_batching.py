@@ -58,9 +58,13 @@ if "models" not in sys.modules:
     sys.modules["models"] = models_stub
 
 if "result_parser" not in sys.modules:
-    result_parser_stub = types.ModuleType("result_parser")
-    result_parser_stub.invalidate_cache = lambda *args, **kwargs: None
-    sys.modules["result_parser"] = result_parser_stub
+    try:
+        # Prefer the real module so other test files that import it keep working.
+        import result_parser  # noqa: F401
+    except ImportError:
+        result_parser_stub = types.ModuleType("result_parser")
+        result_parser_stub.invalidate_cache = lambda *args, **kwargs: None
+        sys.modules["result_parser"] = result_parser_stub
 
 if "runner_base" not in sys.modules:
     runner_base_stub = types.ModuleType("runner_base")
@@ -78,7 +82,10 @@ if "sbom" not in sys.modules:
     sbom_stub.run_syft_scan = lambda *args, **kwargs: (True, "")
     sys.modules["sbom"] = sbom_stub
 
-if "utils" not in sys.modules:
+try:
+    # Prefer the real module so other test files that import `utils` keep working.
+    import utils  # noqa: F401
+except ImportError:
     utils_stub = types.ModuleType("utils")
     utils_stub.CODEBASE_VOLUME = "codebase"
     utils_stub.LLM_OUTPUT_VOLUME = "llm-output"

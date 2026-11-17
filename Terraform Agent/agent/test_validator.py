@@ -1,9 +1,12 @@
 import asyncio
+import shutil
+
+import pytest
 
 from validator import validate_with_retry
 
 
-async def test() -> None:
+async def _validate() -> None:
     bad_params = {
         "instance_name": "test-box",
         "instance_type": "zzz.invalid",
@@ -27,7 +30,9 @@ async def test() -> None:
     )
     print("Validated workspace:", workspace)
     print("Final params:", final_params)
-    print("PASS")
 
 
-asyncio.run(test())
+@pytest.mark.skipif(shutil.which("terraform") is None, reason="requires the terraform binary on PATH")
+def test_validate_with_retry_integration() -> None:
+    """Integration check: needs a real terraform binary; run it where terraform is installed."""
+    asyncio.run(_validate())

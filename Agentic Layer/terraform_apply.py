@@ -681,13 +681,13 @@ normalize_version() {
 version_gt() {
     left=$(normalize_version "$1")
     right=$(normalize_version "$2")
-    [ "$left" \> "$right" ]
+    [ "$left" \\> "$right" ]
 }
 
 version_ge() {
     left=$(normalize_version "$1")
     right=$(normalize_version "$2")
-    [ "$left" = "$right" ] || [ "$left" \> "$right" ]
+    [ "$left" = "$right" ] || [ "$left" \\> "$right" ]
 }
 
 requires_above_target() {
@@ -797,7 +797,7 @@ def _apply_terraform_syntax_compat_patch(
 for tf_file in $(find components/terraform -name "*.tf" 2>/dev/null); do
   if grep -q '[^a-z]map(' "$tf_file" 2>/dev/null; then
     # Best-effort compatibility rewrite for legacy map(key, value) patterns.
-    perl -i -pe 's/\bmap\((.+),\s*"([^"]+)"\)/tomap({\1 = "\2"})/g' "$tf_file"
+    perl -i -pe 's/\\bmap\\((.+),\\s*"([^"]+)"\\)/tomap({\\1 = "\\2"})/g' "$tf_file"
     echo "Patched map() -> tomap() in $tf_file"
   fi
   
@@ -807,7 +807,7 @@ for tf_file in $(find components/terraform -name "*.tf" 2>/dev/null); do
       # Try perl first (preferred for complex regex), fall back to sed
       # Important: Always preserve at least one space around = for valid HCL syntax
       if command -v perl >/dev/null 2>&1; then
-        perl -i -pe 's/vpc\s*=\s*true/domain = "vpc"/g' "$tf_file"
+        perl -i -pe 's/vpc\\s*=\\s*true/domain = "vpc"/g' "$tf_file"
       else
         sed -i 's/vpc[[:space:]]*=[[:space:]]*true/domain = "vpc"/g' "$tf_file"
       fi
@@ -883,13 +883,13 @@ parse_required_vars() {{
         /^[[:space:]]*variable[[:space:]]+"[^"]+"[[:space:]]*{{/ {{
             name=$0
             sub(/^[[:space:]]*variable[[:space:]]+"/, "", name)
-            sub(/"[[:space:]]*\{{[[:space:]]*$/, "", name)
+            sub(/"[[:space:]]*\\{{[[:space:]]*$/, "", name)
             in_var=1
             has_default=0
             next
         }}
         in_var && /^[[:space:]]*default[[:space:]]*=/ {{ has_default=1 }}
-        in_var && /^[[:space:]]*\}}[[:space:]]*$/ {{
+        in_var && /^[[:space:]]*\\}}[[:space:]]*$/ {{
             if (!has_default && name != "") print name
             in_var=0
             has_default=0
