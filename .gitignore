@@ -70,6 +70,11 @@ Terraform-generation-plan.md
 *.mjs
 *.map
 
+# CI configuration that the blanket rules above would otherwise hide from git
+!.eslint-baseline.json
+!.trivy-baseline.json
+!Connector/scripts/*.mjs
+
 # Allow tracked config/source artifacts in Customization Agent
 !Customization Agent/**/*.json
 !Customization Agent/**/*.jsonl

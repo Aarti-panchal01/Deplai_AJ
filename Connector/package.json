@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "lint:ratchet": "node scripts/lint-ratchet.mjs",
+    "test": "node --test src/lib/*.test.ts"
   },
   "dependencies": {
     "@octokit/auth-app": "^8.1.2",

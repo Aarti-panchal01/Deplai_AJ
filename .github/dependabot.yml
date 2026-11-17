@@ -1,0 +1,64 @@
+# Weekly dependency updates. Minor/patch bumps are grouped to keep the PR count low; majors arrive
+# individually so they can be reviewed. Security updates are raised immediately by GitHub regardless
+# of this schedule. See the maintenance plan for the fix-time targets (critical 48 h, high 7 days).
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /Connector
+    schedule: { interval: weekly, day: monday }
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: npm
+    directory: /Customization Agent/tenant_builder_app/frontend
+    schedule: { interval: weekly, day: monday }
+    open-pull-requests-limit: 3
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: pip
+    directory: /Agentic Layer
+    schedule: { interval: weekly, day: monday }
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: pip
+    directory: /Terraform Agent
+    schedule: { interval: weekly, day: monday }
+    open-pull-requests-limit: 3
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: pip
+    directory: /Customization Agent/tenant_builder_app/backend
+    schedule: { interval: weekly, day: monday }
+    open-pull-requests-limit: 3
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: docker
+    directory: /Connector
+    schedule: { interval: weekly, day: monday }
+
+  - package-ecosystem: docker
+    directory: /Agentic Layer
+    schedule: { interval: weekly, day: monday }
+
+  - package-ecosystem: docker
+    directory: /Customization Agent/tenant_builder_app/backend
+    schedule: { interval: weekly, day: monday }
+
+  # Keeps the SHA-pinned actions in .github/workflows current.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly, day: monday }
+    groups:
+      actions:
+        patterns: ["*"]
