@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-const GITHUB_APP_INSTALL_URL = 'https://github.com/apps/deplai-app/installations/new';
+const GITHUB_APP_INSTALL_URL = `https://github.com/apps/${process.env.NEXT_PUBLIC_GITHUB_APP_SLUG || 'deplai-app'}/installations/new`;
 
 export default function DashboardProjectsRedirectPage() {
   const router = useRouter();

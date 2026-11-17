@@ -1,11 +1,10 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Image from 'next/image';
 import {
   Activity,
   AlertTriangle,
-  Bell,
-  Bot,
   CheckCircle2,
   ChevronDown,
   Cloud,
@@ -21,9 +20,7 @@ import {
   Network,
   RefreshCw,
   Save,
-  Settings,
   Shield,
-  Smartphone,
   User,
 } from 'lucide-react';
 import { LLM_PROVIDERS, useLLM, type LLMProvider } from '@/lib/llm-context';
@@ -31,7 +28,7 @@ import { LLM_PROVIDERS, useLLM, type LLMProvider } from '@/lib/llm-context';
 type HealthState = 'healthy' | 'degraded' | 'down';
 type ContextKey = 'workspace' | 'user';
 type WorkspaceTabKey = 'integrations' | 'cloud' | 'ai' | 'secrets' | 'danger';
-type UserTabKey = 'account' | 'security' | 'notifications' | 'preferences' | 'aidefaults' | 'user_integrations' | 'privacy' | 'billing' | 'sessions';
+type UserTabKey = 'account' | 'security' | 'privacy' | 'billing' | 'sessions';
 type TabKey = WorkspaceTabKey | UserTabKey;
 
 type PublicSettings = {
@@ -202,12 +199,8 @@ const WORKSPACE_TABS: Array<{ id: WorkspaceTabKey; label: string; icon: React.Co
 const USER_TABS: Array<{ id: UserTabKey; label: string; icon: React.ComponentType<{ className?: string }> }> = [
   { id: 'account', label: 'Account', icon: User },
   { id: 'security', label: 'Security', icon: Shield },
-  { id: 'notifications', label: 'Notifications', icon: Bell },
-  { id: 'preferences', label: 'Preferences', icon: Settings },
-  { id: 'aidefaults', label: 'AI Defaults', icon: Bot },
-  { id: 'user_integrations', label: 'Integrations', icon: Github },
   { id: 'privacy', label: 'Privacy & Data', icon: Lock },
-  { id: 'billing', label: 'Billing & Usage', icon: Activity },
+  { id: 'billing', label: 'Usage', icon: Activity },
   { id: 'sessions', label: 'Devices & Sessions', icon: Laptop },
 ];
 
@@ -482,20 +475,6 @@ function EditableToggle({ active, onToggle }: { active: boolean; onToggle: () =>
   );
 }
 
-function ReadonlyToggle({ active, dataField }: { active: boolean; dataField?: string }) {
-  return (
-    <div
-      data-field={dataField}
-      role="switch"
-      aria-checked={active}
-      aria-readonly="true"
-      className={`h-5 w-10 cursor-not-allowed rounded-full border px-1 opacity-60 ${active ? 'border-white bg-white' : `bg-[#0A0B0F] ${T.border}`}`}
-    >
-      <div className={`h-3 w-3 rounded-full transition-transform ${active ? 'translate-x-5 bg-black' : 'translate-x-0 bg-zinc-500'}`} />
-    </div>
-  );
-}
-
 function ReadonlyTextInput({ value, dataField }: { value: string; dataField?: string }) {
   return (
     <input
@@ -574,41 +553,80 @@ function EditableSecretInput({
   );
 }
 
-function UserAccountTab() {
+type SessionUser = {
+  id: string;
+  githubId: number;
+  login: string;
+  email: string;
+  name: string;
+  avatarUrl: string;
+};
+
+const GITHUB_SECURITY_URL = 'https://github.com/settings/security';
+const GITHUB_INSTALLATIONS_URL = 'https://github.com/settings/installations';
+const GITHUB_APP_INSTALL_URL = `https://github.com/apps/${process.env.NEXT_PUBLIC_GITHUB_APP_SLUG || 'deplai-app'}/installations/new`;
+
+function ExternalLink({ href, children }: { href: string; children: React.ReactNode }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex items-center rounded-md border border-[#2D3039] px-3 py-2 text-sm text-zinc-200 transition-colors hover:bg-white/5"
+    >
+      {children}
+    </a>
+  );
+}
+
+function SignedOutNotice() {
+  return (
+    <div className={`rounded-md border ${T.border} ${T.bg} p-4 text-sm ${T.muted}`}>
+      You are not signed in, so there is nothing to show here yet.
+    </div>
+  );
+}
+
+function UserAccountTab({ user }: { user: SessionUser | null }) {
   return (
     <div className="animate-in fade-in duration-300">
       <div className="mb-8">
         <h2 className="text-2xl font-bold tracking-tight text-white">Account Profile</h2>
-        <p className={`mt-1 text-sm ${T.muted}`}>Manage your personal identity and localization.</p>
+        <p className={`mt-1 text-sm ${T.muted}`}>Your identity comes from GitHub, which is the only sign-in method.</p>
       </div>
 
-      <SettingSection title="Profile">
-        <div className="mb-2 flex items-center gap-6">
-          <div className="h-20 w-20 shrink-0 rounded-full border border-[#2D3039] bg-[#1A1C23] flex items-center justify-center text-2xl font-bold text-white" aria-label="Avatar AJ">AJ</div>
-          <PixelButton variant="outline">Upload Photo</PixelButton>
-        </div>
-        <SettingField label="Display Name"><ReadonlyTextInput value="AJ" dataField="userDisplayName" /></SettingField>
-        <SettingField label="Role Title"><ReadonlyTextInput value="AI Infrastructure Engineer" dataField="userRoleTitle" /></SettingField>
-        <SettingField label="Bio">
-          <textarea
-            disabled
-            data-field="userBio"
-            value="Building DeplAI - multi-agent AWS deployment automation."
-            className={`h-20 w-full resize-none rounded-md border ${T.border} ${T.bg} px-3 py-2 text-sm ${T.text} disabled:opacity-60`}
-            onChange={() => undefined}
-          />
-        </SettingField>
-        <SettingField label="Contact Email"><ReadonlyTextInput value="aj@pesuventurelabs.com" dataField="userContactEmail" /></SettingField>
-      </SettingSection>
+      {!user ? <SignedOutNotice /> : (
+        <>
+          <SettingSection title="Profile">
+            <div className="flex items-center gap-6">
+              {user.avatarUrl ? (
+                <Image src={user.avatarUrl} alt={`${user.login} avatar`} width={80} height={80} className="h-20 w-20 shrink-0 rounded-full border border-[#2D3039]" />
+              ) : (
+                <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full border border-[#2D3039] bg-[#1A1C23] text-2xl font-bold text-white" aria-hidden="true">
+                  {(user.name || user.login || '?').slice(0, 2).toUpperCase()}
+                </div>
+              )}
+              <div className="min-w-0">
+                <p className="truncate text-lg font-semibold text-white">{user.name || user.login}</p>
+                <p className={`truncate text-sm ${T.mono} ${T.muted}`}>@{user.login}</p>
+              </div>
+            </div>
+            <SettingField label="Name"><ReadonlyTextInput value={user.name || '-'} /></SettingField>
+            <SettingField label="GitHub username"><ReadonlyTextInput value={user.login} /></SettingField>
+            <SettingField label="Email"><ReadonlyTextInput value={user.email || '-'} /></SettingField>
+            <p className="text-[11px] text-zinc-500">To change your name, email or photo, update your GitHub profile; the next sign-in picks it up.</p>
+          </SettingSection>
 
-      <SettingSection title="Localization">
-        <SettingField label="Language"><ReadonlySelectInput value="English (US)" dataField="userLanguage" /></SettingField>
-        <SettingField label="Timezone"><ReadonlySelectInput value="Asia/Kolkata (IST)" dataField="userTimezone" /></SettingField>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <SettingField label="Date Format" layout="vertical"><ReadonlySelectInput value="DD/MM/YYYY" dataField="userDateFormat" /></SettingField>
-          <SettingField label="Number Format" layout="vertical"><ReadonlySelectInput value="1,234.56" dataField="userNumberFormat" /></SettingField>
-        </div>
-      </SettingSection>
+          <SettingSection title="GitHub access">
+            <p className={`text-sm ${T.muted}`}>Repository access is granted through the DeplAI GitHub App. Install it on more repositories, or review what it can see, on GitHub.</p>
+            <div className="flex flex-wrap gap-3">
+              <ExternalLink href={`https://github.com/${encodeURIComponent(user.login)}`}>View GitHub profile</ExternalLink>
+              <ExternalLink href={GITHUB_APP_INSTALL_URL}>Install the GitHub App</ExternalLink>
+              <ExternalLink href={GITHUB_INSTALLATIONS_URL}>Manage installations</ExternalLink>
+            </div>
+          </SettingSection>
+        </>
+      )}
     </div>
   );
 }
@@ -618,264 +636,99 @@ function UserSecurityTab() {
     <div className="animate-in fade-in duration-300">
       <div className="mb-8">
         <h2 className="text-2xl font-bold tracking-tight text-white">Security</h2>
-        <p className={`mt-1 text-sm ${T.muted}`}>Manage passwords, MFA, and passkeys.</p>
+        <p className={`mt-1 text-sm ${T.muted}`}>How sign-in is protected.</p>
       </div>
 
-      <SettingSection title="Password">
-        <SettingField label="Current Password" layout="vertical"><ReadonlyTextInput value="****************" dataField="userCurrentPassword" /></SettingField>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <SettingField label="New Password" layout="vertical"><ReadonlyTextInput value="****************" dataField="userNewPassword" /></SettingField>
-          <SettingField label="Confirm Password" layout="vertical"><ReadonlyTextInput value="****************" dataField="userConfirmPassword" /></SettingField>
-        </div>
-      </SettingSection>
-
-      <SettingSection title="Multi-Factor Authentication" badge={<StatusBadge status="success" label="Enabled" />}>
-        <div className="flex flex-wrap gap-3">
-          <PixelButton variant="outline">Remove TOTP</PixelButton>
-          <PixelButton variant="outline">View Recovery Codes</PixelButton>
-        </div>
-      </SettingSection>
-
-      <SettingSection title="Passkeys">
-        <div className={`flex items-center justify-between rounded-md border ${T.border} ${T.bg} p-4`}>
-          <div className="flex items-center gap-3">
-            <Laptop className="h-5 w-5 text-zinc-400" />
-            <div className="text-sm">
-              <p className="font-medium text-white">MacBook Pro</p>
-              <p className="text-xs text-zinc-500">Chrome - Added 10 days ago - Last used today</p>
-            </div>
-          </div>
-          <PixelButton variant="outline">Remove</PixelButton>
+      <SettingSection title="Sign-in">
+        <p className={`text-sm ${T.muted}`}>
+          DeplAI does not have its own passwords, authenticator codes or passkeys. You sign in with GitHub, so your password, two-factor
+          authentication and passkeys are managed in your GitHub security settings.
+        </p>
+        <div>
+          <ExternalLink href={GITHUB_SECURITY_URL}>Open GitHub security settings</ExternalLink>
         </div>
       </SettingSection>
     </div>
   );
 }
 
-function UserNotificationsTab() {
-  const rows: Array<[string, boolean, boolean, boolean]> = [
-    ['Deployment started', true, true, false],
-    ['Deployment succeeded', true, true, true],
-    ['Deployment failed', true, true, true],
-    ['Remediation completed', false, true, false],
-    ['Remediation requires approval', true, true, true],
-    ['Budget warning threshold hit', true, true, true],
-    ['Security finding detected', true, true, false],
-  ];
-
-  return (
-    <div className="animate-in fade-in duration-300">
-      <div className="mb-8">
-        <h2 className="text-2xl font-bold tracking-tight text-white">Notifications</h2>
-        <p className={`mt-1 text-sm ${T.muted}`}>Manage delivery channels and quiet hours.</p>
-      </div>
-
-      <SettingSection title="Event Toggles">
-        <div className={`overflow-x-auto rounded-md border ${T.border}`}>
-          <table className="w-full whitespace-nowrap text-left text-sm">
-            <thead className={`border-b ${T.border} bg-[#0A0B0F] text-[10px] uppercase tracking-widest ${T.hint}`}>
-              <tr>
-                <th className="px-4 py-3">Event</th>
-                <th className="px-4 py-3 text-center">Email</th>
-                <th className="px-4 py-3 text-center">In-App</th>
-                <th className="px-4 py-3 text-center">Slack</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#1E2028]">
-              {rows.map(([eventName, email, inApp, slack]) => (
-                <tr key={eventName} className="bg-[#111318]">
-                  <td className="px-4 py-3 text-zinc-300">{eventName}</td>
-                  <td className="px-4 py-3 text-center"><ReadonlyToggle active={email} /></td>
-                  <td className="px-4 py-3 text-center"><ReadonlyToggle active={inApp} /></td>
-                  <td className="px-4 py-3 text-center"><ReadonlyToggle active={slack} /></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </SettingSection>
-
-      <SettingSection title="Quiet Hours">
-        <SettingField label="Enable quiet hours"><ReadonlyToggle active /></SettingField>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <SettingField label="Start Time" layout="vertical"><ReadonlyTextInput value="22:00" /></SettingField>
-          <SettingField label="End Time" layout="vertical"><ReadonlyTextInput value="08:00" /></SettingField>
-          <SettingField label="Timezone" layout="vertical"><ReadonlyTextInput value="IST" /></SettingField>
-        </div>
-      </SettingSection>
-    </div>
-  );
-}
-
-function UserPreferencesTab() {
-  return (
-    <div className="animate-in fade-in duration-300">
-      <div className="mb-8">
-        <h2 className="text-2xl font-bold tracking-tight text-white">Preferences</h2>
-        <p className={`mt-1 text-sm ${T.muted}`}>Customize appearance and accessibility.</p>
-      </div>
-
-      <SettingSection title="Appearance">
-        <SettingField label="Theme"><ReadonlySelectInput value="Dark" /></SettingField>
-        <SettingField label="Density"><ReadonlySelectInput value="Default" /></SettingField>
-        <SettingField label="Font Size"><ReadonlySelectInput value="Default" /></SettingField>
-        <SettingField label="Reduced Motion"><ReadonlyToggle active={false} /></SettingField>
-      </SettingSection>
-
-      <SettingSection title="Accessibility">
-        <SettingField label="High Contrast Mode"><ReadonlyToggle active={false} /></SettingField>
-        <SettingField label="Keyboard Hints"><ReadonlyToggle active={false} /></SettingField>
-      </SettingSection>
-    </div>
-  );
-}
-
-function UserAIDefaultsTab() {
-  return (
-    <div className="animate-in fade-in duration-300">
-      <div className="mb-8">
-        <h2 className="text-2xl font-bold tracking-tight text-white">AI Defaults</h2>
-        <p className={`mt-1 text-sm ${T.muted}`}>Manage personal AI behavior and keys.</p>
-      </div>
-
-      <SettingSection title="Provider Preference">
-        <SettingField label="Preferred Provider"><ReadonlySelectInput value="Anthropic" /></SettingField>
-        <SettingField label="Preferred Model"><ReadonlySelectInput value="claude-sonnet-4-20250514" /></SettingField>
-        <SettingField label="Fallback Model"><ReadonlySelectInput value="gpt-4o" /></SettingField>
-      </SettingSection>
-
-      <SettingSection title="BYOK">
-        <div className={`mb-4 flex flex-col items-start justify-between gap-4 rounded-md border ${T.border} ${T.bg} p-4 sm:flex-row sm:items-center`}>
-          <div className="flex items-center gap-3">
-            <Key className="h-4 w-4 text-zinc-400" />
-            <div className="text-sm">
-              <p className="font-medium text-white">Anthropic - personal-key</p>
-              <p className="mt-0.5 text-xs text-zinc-500">Used 2h ago - Active</p>
-            </div>
-          </div>
-          <div className="flex w-full gap-2 sm:w-auto">
-            <PixelButton variant="outline" className="flex-1 sm:flex-none">Rotate</PixelButton>
-            <PixelButton variant="outline" className="flex-1 sm:flex-none">Revoke</PixelButton>
-          </div>
-        </div>
-        <PixelButton variant="default" className="w-full sm:w-max">Add API Key</PixelButton>
-      </SettingSection>
-    </div>
-  );
-}
-
-function UserIntegrationsTab() {
-  return (
-    <div className="animate-in fade-in duration-300">
-      <div className="mb-8">
-        <h2 className="text-2xl font-bold tracking-tight text-white">Integrations</h2>
-        <p className={`mt-1 text-sm ${T.muted}`}>Connect external accounts for personal workflows.</p>
-      </div>
-
-      <SettingSection title="GitHub Identity">
-        <div className={`mb-4 flex flex-col items-start justify-between gap-4 rounded-md border ${T.border} ${T.bg} p-4 sm:flex-row sm:items-center`}>
-          <div className="flex items-center gap-3">
-            <Github className="h-5 w-5 text-white" />
-            <div>
-              <p className="text-sm font-bold text-white">aj-dev</p>
-              <p className="text-xs text-emerald-400">Connected</p>
-            </div>
-          </div>
-          <PixelButton variant="outline" className="w-full sm:w-auto">Disconnect</PixelButton>
-        </div>
-        <SettingField label="Personal PAT"><ReadonlyTextInput value="********" /></SettingField>
-      </SettingSection>
-    </div>
-  );
-}
-
-function UserPrivacyTab() {
+function UserPrivacyTab({ onExport, exporting }: { onExport: () => void; exporting: boolean }) {
   return (
     <div className="animate-in fade-in duration-300">
       <div className="mb-8">
         <h2 className="text-2xl font-bold tracking-tight text-white">Privacy & Data</h2>
-        <p className={`mt-1 text-sm ${T.muted}`}>Manage telemetry, exports, and consent.</p>
+        <p className={`mt-1 text-sm ${T.muted}`}>Get a copy of what DeplAI stores about you.</p>
       </div>
 
-      <SettingSection title="Telemetry">
-        <SettingField label="Usage telemetry"><ReadonlyToggle active /></SettingField>
-        <SettingField label="Analytics level"><ReadonlySelectInput value="Basic" /></SettingField>
-        <SettingField label="Product emails"><ReadonlyToggle active={false} /></SettingField>
+      <SettingSection title="Export my data">
+        <p className={`text-sm ${T.muted}`}>
+          Downloads a JSON file with your account record, saved settings (API keys and secrets are never included), projects, connected GitHub installations and
+          repositories, and your chat history.
+        </p>
+        <div>
+          <PixelButton variant="default" onClick={onExport} disabled={exporting}>{exporting ? 'Preparing export...' : 'Export My Data'}</PixelButton>
+        </div>
       </SettingSection>
 
-      <SettingSection title="Data Controls">
-        <div className="flex flex-col gap-3 sm:flex-row">
-          <PixelButton variant="outline" className="w-full sm:w-auto">Export My Data</PixelButton>
-          <PixelButton variant="outline" className="w-full sm:w-auto">Download Audit Log</PixelButton>
-          <PixelButton variant="danger" className="w-full sm:ml-auto sm:w-auto">Request Account Deletion</PixelButton>
-        </div>
+      <SettingSection title="Deletion">
+        <p className={`text-sm ${T.muted}`}>
+          Self-service account deletion is not available. Remove a project from the dashboard to stop tracking it, or ask the workspace administrator to delete your
+          account and any cloned repositories on the server.
+        </p>
       </SettingSection>
     </div>
   );
 }
 
-function UserBillingTab() {
+function UserUsageTab({ projectCount, installationCount }: { projectCount: number; installationCount: number }) {
   return (
     <div className="animate-in fade-in duration-300">
       <div className="mb-8">
-        <h2 className="text-2xl font-bold tracking-tight text-white">Billing & Usage</h2>
-        <p className={`mt-1 text-sm ${T.muted}`}>Your personal consumption metrics.</p>
+        <h2 className="text-2xl font-bold tracking-tight text-white">Usage</h2>
+        <p className={`mt-1 text-sm ${T.muted}`}>What is currently set up in your workspace.</p>
       </div>
 
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
         {[
-          { label: 'Deployments', value: '12', color: 'text-white' },
-          { label: 'Tokens Used', value: '847K', color: 'text-white' },
-          { label: 'API Calls', value: '234', color: 'text-white' },
-          { label: 'Estimated Cost', value: '$3.21', color: 'text-emerald-400' },
+          { label: 'Projects', value: String(projectCount) },
+          { label: 'GitHub installations', value: String(installationCount) },
         ].map((card) => (
           <div key={card.label} className={`rounded-xl border ${T.border} ${T.surface} p-6`}>
             <p className="mb-2 text-xs font-bold uppercase tracking-widest text-zinc-400">{card.label}</p>
-            <p className={`text-3xl font-bold ${card.color}`}>{card.value}</p>
+            <p className="text-3xl font-bold text-white">{card.value}</p>
           </div>
         ))}
       </div>
+      <p className={`text-sm ${T.muted}`}>Token usage and cost are not metered, and there is no billing system, so only live counts are shown.</p>
     </div>
   );
 }
 
-function UserSessionsTab() {
+function UserSessionsTab({ user, onSignOut, signingOut }: { user: SessionUser | null; onSignOut: () => void; signingOut: boolean }) {
   return (
     <div className="animate-in fade-in duration-300">
-      <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight text-white">Devices & Sessions</h2>
-          <p className={`mt-1 text-sm ${T.muted}`}>Manage active logins and trusted devices.</p>
-        </div>
-        <PixelButton variant="outline" className="w-full sm:w-auto">Revoke All Other Sessions</PixelButton>
+      <div className="mb-8">
+        <h2 className="text-2xl font-bold tracking-tight text-white">Devices & Sessions</h2>
+        <p className={`mt-1 text-sm ${T.muted}`}>Your current sign-in.</p>
       </div>
 
-      <SettingSection title="Active Sessions">
-        <div className={`overflow-hidden rounded-md border ${T.border}`}>
-          {[
-            { icon: Laptop, iconColor: 'text-emerald-400', name: 'MacBook Pro - Chrome', location: 'Bengaluru, IN', time: 'Active now', current: true },
-            { icon: Smartphone, iconColor: 'text-zinc-400', name: 'iPhone 15 - Safari', location: 'Bengaluru, IN', time: '2 hours ago', current: false },
-            { icon: Laptop, iconColor: 'text-zinc-400', name: 'Windows PC - Edge', location: 'Mumbai, IN', time: 'Yesterday', current: false },
-          ].map((row, index) => (
-            <div key={row.name} className={`flex items-center justify-between gap-4 bg-[#111318] px-4 py-4 ${index > 0 ? 'border-t border-[#1E2028]' : ''}`}>
-              <div className="min-w-0 flex items-center gap-3">
-                <row.icon className={`h-5 w-5 shrink-0 ${row.iconColor}`} />
-                <div className="min-w-0">
-                  <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-white">
-                    {row.name}
-                    {row.current ? <span className="rounded border border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-bold uppercase text-emerald-400">This device</span> : null}
-                  </p>
-                  <p className="text-xs font-mono text-zinc-500">{row.location}</p>
-                </div>
-              </div>
-              <div className="flex shrink-0 items-center gap-3">
-                <span className="text-xs text-zinc-500">{row.time}</span>
-                {!row.current ? <PixelButton variant="outline" className="px-2 py-1 text-xs">Revoke</PixelButton> : null}
+      {!user ? <SignedOutNotice /> : (
+        <SettingSection title="This device">
+          <div className={`flex flex-col items-start justify-between gap-4 rounded-md border ${T.border} ${T.bg} p-4 sm:flex-row sm:items-center`}>
+            <div className="flex items-center gap-3">
+              <Laptop className="h-5 w-5 text-emerald-400" aria-hidden="true" />
+              <div className="text-sm">
+                <p className="font-medium text-white">Signed in as @{user.login}</p>
+                <p className="text-xs text-zinc-500">Via GitHub. The session lasts up to 7 days or until you sign out.</p>
               </div>
             </div>
-          ))}
-        </div>
-      </SettingSection>
+            <PixelButton variant="outline" onClick={onSignOut} disabled={signingOut}>{signingOut ? 'Signing out...' : 'Sign out'}</PixelButton>
+          </div>
+          <p className="text-[11px] text-zinc-500">
+            A list of other devices and &quot;sign out everywhere&quot; are not available: sessions live in an encrypted cookie on each device, not on the server.
+          </p>
+        </SettingSection>
+      )}
     </div>
   );
 }
@@ -897,6 +750,9 @@ export default function SettingsApp() {
   const [liveRefreshing, setLiveRefreshing] = useState(false);
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
+
+  const [sessionUser, setSessionUser] = useState<SessionUser | null>(null);
+  const [busy, setBusy] = useState<'' | 'github' | 'aws' | 'export' | 'signout'>('');
 
   const [cleanupPhrase, setCleanupPhrase] = useState('');
   const [cleanupRunning, setCleanupRunning] = useState(false);
@@ -940,6 +796,16 @@ export default function SettingsApp() {
     if (!response.ok) throw new Error(payload.error || 'Failed to load settings');
     applySettingsPayload(payload);
   }, [applySettingsPayload]);
+
+  const loadSession = useCallback(async () => {
+    try {
+      const response = await fetch('/api/auth/session', { cache: 'no-store' });
+      const payload = await response.json() as { isLoggedIn?: boolean; user?: SessionUser };
+      setSessionUser(payload.isLoggedIn && payload.user ? payload.user : null);
+    } catch {
+      setSessionUser(null);
+    }
+  }, []);
 
   const loadLiveMetrics = useCallback(async () => {
     setLiveRefreshing(true);
@@ -985,7 +851,7 @@ export default function SettingsApp() {
       setLoading(true);
       setError('');
       try {
-        await Promise.all([loadSettings(), loadLiveMetrics()]);
+        await Promise.all([loadSettings(), loadLiveMetrics(), loadSession()]);
       } catch (err) {
         if (!cancelled) {
           const message = err instanceof Error ? err.message : 'Failed to load settings';
@@ -1006,10 +872,98 @@ export default function SettingsApp() {
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [loadLiveMetrics, loadSettings]);
+  }, [loadLiveMetrics, loadSession, loadSettings]);
 
   const updateSecretDraft = useCallback((key: keyof SecretDrafts, value: string) => {
     setSecretDrafts((current) => ({ ...current, [key]: value }));
+  }, []);
+
+  const handleTestGithub = useCallback(async () => {
+    setBusy('github');
+    setNotice('');
+    setError('');
+    try {
+      const response = await fetch('/api/settings/test-github', { method: 'POST' });
+      const result = await response.json() as {
+        ok?: boolean;
+        error?: string;
+        app?: { name: string; slug: string; id: number; permissions: string[]; events: string[] };
+      };
+      if (result.ok && result.app) {
+        const { name, slug, id, permissions, events } = result.app;
+        setNotice(
+          `Connected to GitHub App "${name}" (${slug}, id ${id}) with ${permissions.length} permission(s); subscribed events: ${events.join(', ') || 'none'}.`
+        );
+      } else {
+        setError(result.error || 'GitHub App check failed.');
+      }
+    } catch {
+      setError('Could not reach the server to test the GitHub App.');
+    } finally {
+      setBusy('');
+    }
+  }, []);
+
+  const handleValidateAws = useCallback(async () => {
+    setBusy('aws');
+    setNotice('');
+    setError('');
+    try {
+      const response = await fetch('/api/settings/validate-aws', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accessKeyId: secretDrafts.awsAccessKeyId,
+          secretAccessKey: secretDrafts.awsSecretAccessKey,
+          region: settings.cloud.defaultRegion,
+        }),
+      });
+      const result = await response.json() as { valid?: boolean; account?: string | null; arn?: string | null; error?: string | null };
+      if (result.valid) {
+        setNotice(`AWS credentials are valid (account ${result.account ?? 'unknown'}${result.arn ? `, ${result.arn}` : ''}).`);
+      } else {
+        setError(result.error || 'AWS credentials could not be validated.');
+      }
+    } catch {
+      setError('Could not reach the server to validate AWS credentials.');
+    } finally {
+      setBusy('');
+    }
+  }, [secretDrafts.awsAccessKeyId, secretDrafts.awsSecretAccessKey, settings.cloud.defaultRegion]);
+
+  const handleExport = useCallback(async () => {
+    setBusy('export');
+    setNotice('');
+    setError('');
+    try {
+      const response = await fetch('/api/settings/export', { cache: 'no-store' });
+      if (!response.ok) throw new Error('Export failed');
+      const blob = await response.blob();
+      const disposition = response.headers.get('Content-Disposition') || '';
+      const filename = /filename="([^"]+)"/.exec(disposition)?.[1] || 'deplai-export.json';
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      setNotice(`Exported your data to ${filename}.`);
+    } catch {
+      setError('Could not export your data.');
+    } finally {
+      setBusy('');
+    }
+  }, []);
+
+  const handleSignOut = useCallback(async () => {
+    setBusy('signout');
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } finally {
+      window.location.assign('/');
+    }
   }, []);
 
   const handleSave = useCallback(async () => {
@@ -1303,9 +1257,12 @@ export default function SettingsApp() {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-3">
-                  <PixelButton variant="default">Test Connection</PixelButton>
-                  <PixelButton variant="outline">Re-authorize App</PixelButton>
-                  <PixelButton variant="outline">Retry Webhook</PixelButton>
+                  <PixelButton variant="default" onClick={() => void handleTestGithub()} disabled={busy === 'github'}>
+                    {busy === 'github' ? 'Testing...' : 'Test Connection'}
+                  </PixelButton>
+                  <PixelButton variant="outline" onClick={() => window.open(GITHUB_APP_INSTALL_URL, '_blank', 'noopener,noreferrer')}>
+                    Install / Re-authorize App
+                  </PixelButton>
                 </div>
               </SettingSection>
 
@@ -1363,8 +1320,9 @@ export default function SettingsApp() {
                 </SettingField>
 
                 <div className="flex flex-wrap items-center gap-3">
-                  <PixelButton variant="default">Validate Credentials</PixelButton>
-                  <PixelButton variant="outline">Test Connection</PixelButton>
+                  <PixelButton variant="default" onClick={() => void handleValidateAws()} disabled={busy === 'aws'}>
+                    {busy === 'aws' ? 'Validating...' : 'Validate Credentials'}
+                  </PixelButton>
                 </div>
               </SettingSection>
 
@@ -1601,15 +1559,11 @@ export default function SettingsApp() {
             </div>
           ) : null}
 
-          {activeContext === 'user' && activeTab === 'account' ? <UserAccountTab /> : null}
+          {activeContext === 'user' && activeTab === 'account' ? <UserAccountTab user={sessionUser} /> : null}
           {activeContext === 'user' && activeTab === 'security' ? <UserSecurityTab /> : null}
-          {activeContext === 'user' && activeTab === 'notifications' ? <UserNotificationsTab /> : null}
-          {activeContext === 'user' && activeTab === 'preferences' ? <UserPreferencesTab /> : null}
-          {activeContext === 'user' && activeTab === 'aidefaults' ? <UserAIDefaultsTab /> : null}
-          {activeContext === 'user' && activeTab === 'user_integrations' ? <UserIntegrationsTab /> : null}
-          {activeContext === 'user' && activeTab === 'privacy' ? <UserPrivacyTab /> : null}
-          {activeContext === 'user' && activeTab === 'billing' ? <UserBillingTab /> : null}
-          {activeContext === 'user' && activeTab === 'sessions' ? <UserSessionsTab /> : null}
+          {activeContext === 'user' && activeTab === 'privacy' ? <UserPrivacyTab onExport={() => void handleExport()} exporting={busy === 'export'} /> : null}
+          {activeContext === 'user' && activeTab === 'billing' ? <UserUsageTab projectCount={live.projectCount} installationCount={live.installationCount} /> : null}
+          {activeContext === 'user' && activeTab === 'sessions' ? <UserSessionsTab user={sessionUser} onSignOut={() => void handleSignOut()} signingOut={busy === 'signout'} /> : null}
         </section>
       </div>
 

@@ -27,6 +27,7 @@ from functools import partial
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Header, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
+from aws_credentials import validate_aws_credentials
 from models import (
     ScanValidationRequest, ScanValidationResponse,
     WebSocketCommand, StreamStatus,
@@ -39,6 +40,7 @@ from models import (
     TerraformApplyStopRequest, TerraformApplyStopResponse,
     TerraformApplyStatusRequest, TerraformApplyStatusResponse,
     AwsRuntimeDetailsRequest, AwsRuntimeDetailsResponse,
+    AwsCredentialValidationRequest, AwsCredentialValidationResponse,
     AwsDestroyRequest, AwsDestroyResponse,
     AwsInstanceActionRequest, AwsInstanceActionResponse,
 )
@@ -1160,6 +1162,19 @@ async def terraform_apply_stop(request: TerraformApplyStopRequest):
     if not ok:
         return TerraformApplyStopResponse(success=False, error=msg)
     return TerraformApplyStopResponse(success=True, message=msg)
+
+
+@app.post("/api/aws/validate-credentials", response_model=AwsCredentialValidationResponse, dependencies=[Depends(verify_api_key)])
+async def aws_validate_credentials(request: AwsCredentialValidationRequest):
+    """Check AWS credentials with STS GetCallerIdentity. Falls back to the server's own AWS
+    environment credentials when none are supplied (callers must authorise that case)."""
+    access_key = request.aws_access_key_id or os.environ.get("AWS_ACCESS_KEY_ID", "")
+    secret_key = request.aws_secret_access_key or os.environ.get("AWS_SECRET_ACCESS_KEY", "")
+    loop = asyncio.get_running_loop()
+    result = await loop.run_in_executor(
+        None, partial(validate_aws_credentials, access_key, secret_key, request.aws_region)
+    )
+    return AwsCredentialValidationResponse(**result)
 
 
 @app.post("/api/aws/runtime-details", response_model=AwsRuntimeDetailsResponse, dependencies=[Depends(verify_api_key)])

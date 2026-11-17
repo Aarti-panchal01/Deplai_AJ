@@ -198,7 +198,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   setCurrent,
   stages,
   githubAccounts = [],
-  githubInstallUrl = 'https://github.com/apps/deplai-app/installations/new',
+  githubInstallUrl = `https://github.com/apps/${process.env.NEXT_PUBLIC_GITHUB_APP_SLUG || 'deplai-app'}/installations/new`,
   onDisconnectGitHub,
   onBackToDashboard,
 }) => {

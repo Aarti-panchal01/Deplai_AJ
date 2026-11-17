@@ -307,6 +307,20 @@ class AwsRuntimeDetailsResponse(BaseModel):
     error: Optional[str] = None
 
 
+class AwsCredentialValidationRequest(BaseModel):
+    aws_access_key_id: str = ""
+    aws_secret_access_key: str = ""
+    aws_region: str = "us-east-1"
+
+
+class AwsCredentialValidationResponse(BaseModel):
+    valid: bool
+    account: Optional[str] = None
+    arn: Optional[str] = None
+    user_id: Optional[str] = None
+    error: Optional[str] = None
+
+
 class AwsDestroyRequest(BaseModel):
     project_name: str = "deplai-project"
     aws_access_key_id: str
