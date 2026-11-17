@@ -9,7 +9,7 @@ The repository is a multi-service workspace. The primary application is the **Co
 - GitHub OAuth login with an explicit GitHub account chooser; users can select a different GitHub account after signing out of DeplAI.
 - GitHub App installation discovery, repository synchronization, cloning, branch access, webhook processing, and installation-token access.
 - Local ZIP project upload, extraction, browsing, and deletion.
-- SAST and software-composition analysis (SCA) workflows with status/result APIs and authenticated WebSocket progress streams.
+- SAST and software-composition analysis (SCA) workflows with status/result APIs and authenticated WebSocket progress streams. SAST runs Bearer and Semgrep in parallel (a scan succeeds if at least one succeeds; overlapping hits are merged); SCA uses Syft and Grype. Semgrep's container needs HTTPS access to `semgrep.dev` for rule packs, and can be tuned or disabled with the `SEMGREP_*` variables in `.env.template`.
 - Guided remediation, optional user-supplied LLM credentials, repository changes, and pull-request handoff for GitHub projects.
 - Repository analysis, architecture review, deterministic or LLM-assisted architecture generation, cost estimation, and approval payload generation.
 - Terraform generation through the deterministic deployment-profile renderer, the EC2 application renderer, and the Terraform Agent pipeline.
@@ -219,7 +219,18 @@ The current repository has pre-existing lint findings outside individual changes
 
 ### Python services
 
-Run unit tests from the relevant service directories with the active virtual environment. The Agentic Layer and Terraform Agent both contain targeted test modules for repository sources, rendering, Terraform runs, package behavior, and execution helpers.
+Run unit tests from the relevant service directories with the active virtual environment (Python 3.13). The Agentic Layer and Terraform Agent both contain targeted test modules for repository sources, rendering, Terraform runs, package behavior, and execution helpers.
+
+```bash
+pip install pytest pytest-asyncio
+export DEPLAI_SERVICE_KEY=test-key   # required to import the Agentic Layer
+export PYTHONPATH="$PWD/Agentic Layer:$PWD:$PWD/Terraform Agent"
+
+(cd "Agentic Layer" && python -m pytest test_*.py)
+(cd "Terraform Agent" && python -m pytest test_llm_config.py agent)
+```
+
+`Terraform Agent/agent/test_validator.py` is an integration test and is skipped unless a `terraform` binary is on `PATH`.
 
 ## Safety notes
 
@@ -228,6 +239,32 @@ Run unit tests from the relevant service directories with the active virtual env
 - Agentic scan and remediation WebSockets require a short-lived HMAC token bound to both the user and project ID.
 - `POST /api/cleanup` in the Agentic Layer is globally destructive and disabled unless `ALLOW_GLOBAL_CLEANUP=true`. Do not enable it in a shared or production environment without deliberate operational controls.
 - Runtime destruction is best-effort and targets resources tagged for the selected DeplAI project. Review the returned details and AWS console state after a destroy request.
+
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on every pull request, on pushes to `main`, nightly, and on demand:
+
+| Job | What it checks | Blocks merge? |
+| --- | --- | --- |
+| `connector` | `tsc`, lint ratchet, `npm test`, production `next build` (Node 24) | Yes |
+| `python` | byte-compile everything, Agentic Layer and Terraform Agent tests (Python 3.13) | Yes |
+| `security` | Gitleaks over the full git history (fails if it scans zero commits); Trivy dependency and config scan | Gitleaks yes; Trivy ratchet only in the nightly run |
+| `images` | BuildKit lint of the three Dockerfiles on every run; full image builds on `main`, nightly and on demand | Yes |
+| `licenses` | Licence summaries for Node and Python dependencies (nightly/on demand, informational) | No |
+
+**Ratchets.** Lint and dependency vulnerabilities are not clean yet, so CI only fails when they get *worse*:
+`Connector/.eslint-baseline.json` (10 errors / 98 warnings) and `.trivy-baseline.json` (18 critical / 112 high). When you fix some, lock in the gain in the same PR with `npm run lint:ratchet -- --update` or `python3 scripts/ci/vuln_ratchet.py <trivy.json> --update`. A baseline may only go down.
+
+**Run the same checks locally**
+
+```bash
+cd Connector && npm ci && npx tsc --noEmit && npm run lint:ratchet && npm test && npm run build
+# Python: see "Validation and tests" above
+docker run --rm -v "$PWD:/repo:ro" -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0=/repo \
+  zricethezav/gitleaks:v8.30.1 git /repo --redact
+```
+
+**Maintenance.** Actions are pinned to commit SHAs and Dependabot (`.github/dependabot.yml`) opens weekly update PRs for npm, pip, Docker and Actions. Known Gitleaks false positives go in `.gitleaksignore`. After the first push, enable branch protection on `main` and require the `connector`, `python`, `security` and `images` checks.
 
 ## Further documentation
 
