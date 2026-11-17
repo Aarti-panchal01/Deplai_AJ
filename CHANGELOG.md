@@ -16,10 +16,14 @@ This changelog is derived from git log commit subjects in this repository.
 
 ### Added
 - Semgrep as a second SAST engine next to Bearer (see `SEMGREP_*` in `.env.template`).
+- Bandit as a third SAST engine (official image, offline, `BANDIT_*` settings) and a cross-engine merge (`code_findings.py`): findings are clustered by weakness family and overlapping line range, so one bug reported by several engines is one finding with an `engines` list (shown as a badge in the Security Analysis page). Severity is resolved by consensus; weak-PRNG without security context is demoted, hardcoded credentials are at least medium, findings in test code are one level lower, audit-style Bandit checks (B108, B310) and empty/placeholder "passwords" are not reported as medium findings, and one canonical CWE is shown for families where engines' CWE metadata is wrong (e.g. Semgrep tags SQL injection as CWE-704). On the benchmark app, detection rose from 7 to 9 of 25 findings (+3 partial) and duplicate rows fell from 3 to 0.
 - `npm test` in the Connector (Node's built-in test runner) with tests for the export helper and error helpers.
 
 ### Added (CI)
 - GitHub Actions CI (`.github/workflows/ci.yml`), Dependabot and a pull request template. Lint and dependency-vulnerability ratchets (`Connector/.eslint-baseline.json`, `.trivy-baseline.json`).
+
+### Fixed
+- The LLM remediation agent (`Analysis/dataingestor.py`) read only Bearer and Grype, so Semgrep and Bandit findings never reached it; it now uses the same merged findings as the dashboard.
 
 ### Fixed (CI findings)
 - `next build` failed on a clean checkout because Turbopack cannot bundle `ssh2`'s native binding (EC2 logs route); `ssh2` is now a `serverExternalPackages` entry. The production Docker image build failed for the same reason.
