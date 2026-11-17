@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
-import { query } from '@/lib/db';
+import { query, type DbRow } from '@/lib/db';
+import { errorMessage } from '@/lib/errors';
 
 export async function DELETE(
   _request: NextRequest,
@@ -12,7 +13,7 @@ export async function DELETE(
     if (error) return error;
 
     // Verify the repo belongs to this user via the installations join
-    const rows = await query<any[]>(
+    const rows = await query<DbRow[]>(
       `SELECT r.id, r.full_name
        FROM github_repositories r
        JOIN github_installations i ON i.id = r.installation_id
@@ -35,10 +36,10 @@ export async function DELETE(
       success: true,
       message: `Repository "${repo.full_name}" removed from DeplAI`,
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('Error removing repository:', err);
     return NextResponse.json(
-      { error: err.message || 'Failed to remove repository' },
+      { error: errorMessage(err, 'Failed to remove repository') },
       { status: 500 }
     );
   }

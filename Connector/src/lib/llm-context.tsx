@@ -57,6 +57,7 @@ export function LLMProviderContext({ children }: { children: React.ReactNode }) 
     try {
       const savedProvider = localStorage.getItem(LS_PROVIDER_KEY) as LLMProvider | null;
       if (savedProvider && LLM_PROVIDERS.find(p => p.id === savedProvider)) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- localStorage is only readable after mount (avoids hydration mismatch)
         setProviderState(savedProvider);
       }
       const savedKeys = localStorage.getItem(LS_KEYS_KEY);

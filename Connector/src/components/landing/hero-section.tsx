@@ -109,6 +109,7 @@ export function HeroSection() {
   const [wordIndex, setWordIndex] = useState(0);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- mount flag that triggers the entrance animation after hydration
     setIsVisible(true);
   }, []);
 

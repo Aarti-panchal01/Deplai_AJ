@@ -8,6 +8,7 @@ import ThemeToggle from '@/components/theme-toggle';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { PopupProvider, usePopup } from '@/components/popup';
+import { errorMessage } from '@/lib/errors';
 
 interface FileItem {
   name: string;
@@ -144,8 +145,8 @@ function RepositoryBrowserContent() {
 
       const data = await res.json();
       setContents(data.contents || []);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(errorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -166,8 +167,8 @@ function RepositoryBrowserContent() {
 
         const data = await res.json();
         setFileContent(data.content);
-      } catch (err: any) {
-        setError(err.message);
+      } catch (err: unknown) {
+        setError(errorMessage(err));
       } finally {
         setLoading(false);
       }
@@ -202,8 +203,8 @@ function RepositoryBrowserContent() {
       }
 
       await fetchContents();
-    } catch (err: any) {
-      showPopup({ type: 'error', message: err.message });
+    } catch (err: unknown) {
+      showPopup({ type: 'error', message: errorMessage(err) });
     } finally {
       setRefreshing(false);
     }

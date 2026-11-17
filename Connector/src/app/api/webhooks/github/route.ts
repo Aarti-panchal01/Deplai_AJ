@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { query } from '@/lib/db';
+import { query, type DbRow } from '@/lib/db';
 import { verifyWebhookSignature } from '@/lib/crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { requireEnv } from '@/lib/env';
@@ -96,7 +96,38 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function handleInstallation(payload: any) {
+interface WebhookRepo {
+  id: number;
+  full_name: string;
+  private: boolean;
+  default_branch?: string;
+}
+
+interface InstallationPayload {
+  action: string;
+  installation: { id: number; account: { login: string; type: string } };
+  repositories?: WebhookRepo[];
+}
+
+interface InstallationRepositoriesPayload {
+  action: string;
+  installation: { id: number };
+  repositories_added: WebhookRepo[];
+  repositories_removed: WebhookRepo[];
+}
+
+interface PushPayload {
+  repository: { id: number; full_name: string };
+  ref: string;
+}
+
+interface PullRequestPayload {
+  action: string;
+  pull_request: { number: number };
+  repository: { id: number; full_name: string };
+}
+
+async function handleInstallation(payload: InstallationPayload) {
   const { action, installation, repositories } = payload;
 
   if (action === 'created') {
@@ -135,7 +166,7 @@ async function handleInstallation(payload: any) {
     console.log(`Installation ${installation.id} unsuspended`);
 
   } else if (action === 'deleted') {
-    const [inst] = await query<any[]>(
+    const [inst] = await query<DbRow[]>(
       'SELECT id FROM github_installations WHERE installation_id = ?',
       [installation.id]
     );
@@ -154,10 +185,10 @@ async function handleInstallation(payload: any) {
   }
 }
 
-async function handleInstallationRepositories(payload: any) {
+async function handleInstallationRepositories(payload: InstallationRepositoriesPayload) {
   const { action, installation, repositories_added, repositories_removed } = payload;
 
-  const [inst] = await query<any[]>(
+  const [inst] = await query<DbRow[]>(
     'SELECT id FROM github_installations WHERE installation_id = ?',
     [installation.id]
   );
@@ -166,7 +197,7 @@ async function handleInstallationRepositories(payload: any) {
 
   if (action === 'added') {
     for (const repo of repositories_added) {
-      await storeRepository(inst.id, repo);
+      await storeRepository(inst.id as string, repo);
     }
   } else if (action === 'removed') {
     for (const repo of repositories_removed) {
@@ -178,7 +209,7 @@ async function handleInstallationRepositories(payload: any) {
   }
 }
 
-async function handlePush(payload: any) {
+async function handlePush(payload: PushPayload) {
   const { repository, ref } = payload;
 
   await query(
@@ -191,7 +222,7 @@ async function handlePush(payload: any) {
   console.log(`Push to ${ref} in ${repository.full_name}, marked as stale`);
 }
 
-async function handlePullRequest(payload: any) {
+async function handlePullRequest(payload: PullRequestPayload) {
   const { action, pull_request, repository } = payload;
 
   if (action !== 'opened' && action !== 'synchronize') {
@@ -208,7 +239,7 @@ async function handlePullRequest(payload: any) {
   console.log(`PR #${pull_request.number} in ${repository.full_name} marked as stale`);
 }
 
-async function storeRepository(installationId: string, repo: any) {
+async function storeRepository(installationId: string, repo: WebhookRepo) {
   await query(
     `INSERT INTO github_repositories 
      (id, installation_id, github_repo_id, full_name, is_private, default_branch)

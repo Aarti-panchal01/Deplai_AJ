@@ -87,6 +87,7 @@ export default function LLMPicker() {
 
   // Sync key field on provider change
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentionally resyncs the draft key field when the provider changes
     setKeyInput(apiKeys[provider] || '');
     setShowKey(false);
   }, [provider, apiKeys]);

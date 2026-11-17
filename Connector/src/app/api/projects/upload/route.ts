@@ -3,6 +3,7 @@ import { requireAuth } from '@/lib/auth';
 import { query } from '@/lib/db';
 import { extractZipToProject } from '@/lib/local-projects';
 import { v4 as uuidv4 } from 'uuid';
+import { errorMessage } from '@/lib/errors';
 
 const MAX_FILE_SIZE = 1 * 1024 * 1024 * 1024; // 1GB limit
 
@@ -80,10 +81,10 @@ export async function POST(request: NextRequest) {
         sizeBytes,
       },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Upload error:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to upload project' },
+      { error: errorMessage(error, 'Failed to upload project') },
       { status: 500 }
     );
   }

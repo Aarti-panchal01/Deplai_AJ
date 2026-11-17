@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import AdmZip from 'adm-zip';
+import { errorMessage } from './errors';
 
 const LOCAL_PROJECTS_BASE = path.join(process.cwd(), 'tmp', 'local-projects');
 
@@ -128,7 +129,7 @@ export async function extractZipToProject(
       fileCount: stats.fileCount,
       sizeBytes: stats.size,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Cleanup on error
     if (fs.existsSync(projectPath)) {
       fs.rmSync(projectPath, { recursive: true, force: true });
@@ -137,7 +138,7 @@ export async function extractZipToProject(
     if (fs.existsSync(zipFilePath)) {
       fs.rmSync(zipFilePath, { force: true });
     }
-    throw new Error(`Failed to extract zip: ${error.message}`);
+    throw new Error(`Failed to extract zip: ${errorMessage(error)}`);
   }
 }
 

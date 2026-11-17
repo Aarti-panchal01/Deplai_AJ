@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { query } from '@/lib/db';
+import { query, type DbRow } from '@/lib/db';
 import { requireAuth, verifyInstallationOwnership } from '@/lib/auth';
 
 export async function GET(request: NextRequest) {
@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const repositories = await query<any[]>(
+    const repositories = await query<DbRow[]>(
       `SELECT 
         id,
         github_repo_id,
@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
 
     const formatted = repositories.map(repo => ({
       ...repo,
-      languages: repo.languages ? JSON.parse(repo.languages) : null,
+      languages: repo.languages ? JSON.parse(repo.languages as string) : null,
     }));
 
     return NextResponse.json({ repositories: formatted });

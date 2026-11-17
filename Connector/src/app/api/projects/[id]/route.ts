@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
-import { query } from '@/lib/db';
+import { query, type DbRow } from '@/lib/db';
 import { deleteProject } from '@/lib/local-projects';
 import { AGENTIC_URL, agenticHeaders } from '@/lib/agentic';
+import { errorMessage } from '@/lib/errors';
 
 export async function DELETE(
   request: NextRequest,
@@ -14,7 +15,7 @@ export async function DELETE(
     const { user, error } = await requireAuth();
     if (error) return error;
 
-    const [project] = await query<any[]>(
+    const [project] = await query<DbRow[]>(
       `SELECT 
         id,
         name,
@@ -49,7 +50,7 @@ export async function DELETE(
 
     try {
       deleteProject(user.id, projectId);
-    } catch (fsError: any) {
+    } catch (fsError: unknown) {
       console.error('Filesystem deletion error:', fsError);
     }
 
@@ -78,10 +79,10 @@ export async function DELETE(
         name: project.name,
       },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Delete project error:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to delete project' },
+      { error: errorMessage(error, 'Failed to delete project') },
       { status: 500 }
     );
   }
@@ -98,7 +99,7 @@ export async function GET(
     if (error) return error;
 
     // Try local projects table first
-    const [project] = await query<any[]>(
+    const [project] = await query<DbRow[]>(
       `SELECT
         p.id,
         p.name,
@@ -135,8 +136,8 @@ export async function GET(
         sizeBytes: project.size_bytes,
         createdAt: project.created_at,
         ...(project.project_type === 'github' && project.repo_full_name ? {
-          owner: project.repo_full_name.split('/')[0],
-          repo: project.repo_full_name.split('/')[1],
+          owner: (project.repo_full_name as string).split('/')[0],
+          repo: (project.repo_full_name as string).split('/')[1],
           installationId: project.github_installation_id,
         } : {}),
       };
@@ -145,7 +146,7 @@ export async function GET(
     }
 
     // Fallback: check github_repositories (GitHub repo IDs are used as projectId)
-    const [ghRepo] = await query<any[]>(
+    const [ghRepo] = await query<DbRow[]>(
       `SELECT
         r.id,
         r.full_name,
@@ -168,7 +169,7 @@ export async function GET(
     }
 
     if (ghRepo.user_id !== user.id) {
-      const [linkedProject] = await query<any[]>(
+      const [linkedProject] = await query<DbRow[]>(
         `SELECT id, user_id FROM projects WHERE repository_id = ? LIMIT 1`,
         [projectId]
       );
@@ -180,7 +181,7 @@ export async function GET(
       }
     }
 
-    const [owner, repoName] = ghRepo.full_name.split('/');
+    const [owner, repoName] = (ghRepo.full_name as string).split('/');
     const response = {
       id: ghRepo.id,
       name: repoName,
@@ -194,7 +195,7 @@ export async function GET(
     };
 
     return NextResponse.json({ project: response });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Get project error:', error);
     return NextResponse.json(
       { error: 'Failed to fetch project' },

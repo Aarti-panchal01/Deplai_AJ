@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { githubService } from '@/lib/github';
 import { requireAuth, verifyRepositoryOwnership } from '@/lib/auth';
+import { errorMessage } from '@/lib/errors';
 
 export async function GET(request: NextRequest) {
   try {
@@ -36,10 +37,10 @@ export async function GET(request: NextRequest) {
     );
 
     return NextResponse.json({ content, path: filePath });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error fetching file:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to fetch file' },
+      { error: errorMessage(error, 'Failed to fetch file') },
       { status: 500 }
     );
   }

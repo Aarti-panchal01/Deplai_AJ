@@ -74,7 +74,7 @@ const LandingTextAnimation: React.FC<LandingTextAnimationProps> = ({
     el.style.backgroundSize = '200% auto';
     el.style.webkitBackgroundClip = 'text';
     el.style.backgroundClip = 'text';
-    (el.style as any).webkitTextFillColor = 'transparent';
+    el.style.setProperty('-webkit-text-fill-color', 'transparent');
     shinyTweenRef.current = gsap.fromTo(
       el,
       { backgroundPosition: '150% center' },

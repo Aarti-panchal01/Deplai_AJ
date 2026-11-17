@@ -3,7 +3,7 @@ import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { timingSafeEqual } from 'node:crypto';
 import { getSessionOptions, SessionData } from './session';
-import { query } from './db';
+import { query, type DbRow } from './db';
 
 function adminEmailSet(): Set<string> {
   const raw = [process.env.ADMIN_EMAILS, process.env.ADMIN_EMAIL]
@@ -146,8 +146,8 @@ export async function requireAdmin(): Promise<
 export async function verifyLocalProjectAccess(
   userId: string,
   projectId: string
-): Promise<{ project: any; error?: never } | { project?: never; error: NextResponse }> {
-  const [project] = await query<any[]>(
+): Promise<{ project: DbRow; error?: never } | { project?: never; error: NextResponse }> {
+  const [project] = await query<DbRow[]>(
     `SELECT id, name, project_type, user_id
      FROM projects
      WHERE id = ?`,
@@ -170,9 +170,9 @@ export async function verifyLocalProjectAccess(
 export async function verifyProjectOwnership(
   userId: string,
   projectId: string
-): Promise<{ project: any; error?: never } | { project?: never; error: NextResponse }> {
+): Promise<{ project: DbRow; error?: never } | { project?: never; error: NextResponse }> {
   // Local projects are stored in the `projects` table
-  const [localProject] = await query<any[]>(
+  const [localProject] = await query<DbRow[]>(
     `SELECT id, name, project_type, user_id FROM projects WHERE id = ?`,
     [projectId]
   );
@@ -184,7 +184,7 @@ export async function verifyProjectOwnership(
   }
 
   // GitHub repos are stored in `github_repositories` — ownership via installation
-  const [githubRepo] = await query<any[]>(
+  const [githubRepo] = await query<DbRow[]>(
     `SELECT r.id, r.full_name, i.user_id
      FROM github_repositories r
      JOIN github_installations i ON i.id = r.installation_id
@@ -195,7 +195,7 @@ export async function verifyProjectOwnership(
     if (githubRepo.user_id !== userId) {
       // Fallback path: legacy rows can have github_installations.user_id = NULL.
       // In that case, trust ownership through a linked project record.
-      const [linkedProject] = await query<any[]>(
+      const [linkedProject] = await query<DbRow[]>(
         `SELECT id, user_id FROM projects WHERE repository_id = ? LIMIT 1`,
         [projectId]
       );
@@ -213,7 +213,7 @@ export async function verifyInstallationOwnership(
   userId: string,
   installationId: string
 ): Promise<boolean> {
-  const [result] = await query<any[]>(
+  const [result] = await query<DbRow[]>(
     `SELECT id FROM github_installations 
      WHERE id = ? AND user_id = ?`,
     [installationId, userId]
@@ -227,7 +227,7 @@ export async function verifyRepositoryOwnership(
   owner: string,
   repo: string
 ): Promise<{ installationId: string; suspended: boolean } | null> {
-  const [result] = await query<any[]>(
+  const [result] = await query<DbRow[]>(
     `SELECT r.installation_id, i.id as installation_uuid, i.suspended_at
      FROM github_repositories r
      JOIN github_installations i ON i.id = r.installation_id
@@ -236,12 +236,12 @@ export async function verifyRepositoryOwnership(
   );
 
   if (result) {
-    return { installationId: result.installation_uuid, suspended: !!result.suspended_at };
+    return { installationId: result.installation_uuid as string, suspended: !!result.suspended_at };
   }
 
   // Fallback path: installation rows may exist without user_id populated.
   // Resolve ownership via any linked project owned by the user.
-  const [fallback] = await query<any[]>(
+  const [fallback] = await query<DbRow[]>(
     `SELECT r.installation_id, i.suspended_at
      FROM github_repositories r
      LEFT JOIN github_installations i ON i.id = r.installation_id

@@ -1,12 +1,13 @@
 import { Octokit } from '@octokit/rest';
 import { createAppAuth } from '@octokit/auth-app';
-import { query } from './db';
+import { query, type DbRow } from './db';
 import { v4 as uuidv4 } from 'uuid';
 import simpleGit from 'simple-git';
 import { createPrivateKey } from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { requireEnv } from './env';
+import { errorMessage, errorStatus } from './errors';
 
 interface GitHubConfig {
   appId: string;
@@ -71,6 +72,22 @@ export class GitHubService {
     });
   }
 
+  /** Authenticate as the GitHub App (JWT) and return its public metadata. Throws if the App ID / key are wrong. */
+  async getAppInfo(): Promise<{ id: number; slug: string; name: string; htmlUrl: string; owner: string | null; permissions: string[]; events: string[] }> {
+    const { data } = await this.app.request('GET /app');
+    if (!data) throw new Error('GitHub returned no App data');
+    const owner = data.owner as { login?: string } | null | undefined;
+    return {
+      id: Number(data.id),
+      slug: String(data.slug ?? ''),
+      name: String(data.name ?? ''),
+      htmlUrl: String(data.html_url ?? ''),
+      owner: owner?.login ?? null,
+      permissions: Object.entries((data.permissions ?? {}) as Record<string, string>).map(([name, level]) => `${name}:${level}`),
+      events: Array.isArray(data.events) ? data.events.map(String) : [],
+    };
+  }
+
   private async _createInstallationToken(
     installationId: string,
     permissions?: Record<string, string>,
@@ -81,7 +98,7 @@ export class GitHubService {
       return cached.token;
     }
 
-    const installations = await query<any[]>(
+    const installations = await query<DbRow[]>(
       'SELECT installation_id FROM github_installations WHERE id = ?',
       [installationId]
     );
@@ -93,18 +110,18 @@ export class GitHubService {
     let data;
     try {
       ({ data } = await this.app.apps.createInstallationAccessToken({
-        installation_id: installations[0].installation_id,
+        installation_id: installations[0].installation_id as number,
         ...(permissions ? { permissions } : {}),
       }));
-    } catch (err: any) {
-      if (err.status === 403) {
+    } catch (err: unknown) {
+      if (errorStatus(err) === 403) {
         await query(
           `UPDATE github_installations SET suspended_at = NOW() WHERE id = ?`,
           [installationId]
         );
         throw new Error('GitHub App installation is suspended. Please unsuspend it from your GitHub settings.');
       }
-      if (err.status === 422 && permissions) {
+      if (errorStatus(err) === 422 && permissions) {
         // The app doesn't have the requested permissions — surface a clear message
         throw new Error(
           `GitHub App does not have the required permissions (${Object.entries(permissions).map(([k, v]) => `${k}:${v}`).join(', ')}). ` +
@@ -196,9 +213,9 @@ export class GitHubService {
   ): Promise<T> {
     try {
       return await operation(branch);
-    } catch (error: any) {
+    } catch (error: unknown) {
       const fallback = branch === 'main' ? 'master' : 'main';
-      if (!error.message.includes('Remote branch') && !error.message.includes('couldn\'t find remote ref')) {
+      if (!errorMessage(error).includes('Remote branch') && !errorMessage(error).includes('couldn\'t find remote ref')) {
         throw error;
       }
 
@@ -279,11 +296,11 @@ export class GitHubService {
     const git = simpleGit(repoDir);
     await git.remote(['set-url', 'origin', `https://x-access-token:${token}@github.com/${owner}/${repo}.git`]);
 
-    const [repoData] = await query<any[]>(
+    const [repoData] = await query<DbRow[]>(
       `SELECT default_branch FROM github_repositories WHERE full_name = ?`,
       [`${owner}/${repo}`]
     );
-    const branch = repoData?.default_branch || 'main';
+    const branch = (repoData?.default_branch as string | undefined) || 'main';
 
     console.log(`Pulling latest changes for ${owner}/${repo} (branch: ${branch})...`);
 
@@ -303,7 +320,7 @@ export class GitHubService {
   ): Promise<string> {
     const repoPath = this.repoPath(owner, repo);
 
-    const [repoData] = await query<any[]>(
+    const [repoData] = await query<DbRow[]>(
       `SELECT needs_refresh, default_branch FROM github_repositories 
        WHERE full_name = ?`,
       [`${owner}/${repo}`]
@@ -321,7 +338,7 @@ export class GitHubService {
     if (!needsRefresh) return repoPath;
 
     if (!fs.existsSync(repoPath)) {
-      return await this.cloneRepository(installationId, owner, repo, repoData.default_branch);
+      return await this.cloneRepository(installationId, owner, repo, repoData.default_branch as string);
     }
     return await this.pullRepository(installationId, owner, repo);
   }
@@ -331,7 +348,7 @@ export class GitHubService {
     owner: string,
     repo: string,
     dirPath: string = ''
-  ): Promise<any[]> {
+  ): Promise<{ name: string; path: string; type: 'dir' | 'file'; size: number | null }[]> {
     const repoPath = await this.ensureRepoFresh(installationId, owner, repo);
     const fullPath = path.join(repoPath, dirPath);
 
@@ -346,7 +363,7 @@ export class GitHubService {
       .map(item => ({
         name: item.name,
         path: path.join(dirPath, item.name).replace(/\\/g, '/'),
-        type: item.isDirectory() ? 'dir' : 'file',
+        type: item.isDirectory() ? ('dir' as const) : ('file' as const),
         size: item.isFile() ? fs.statSync(path.join(fullPath, item.name)).size : null,
       }))
       .sort((a, b) => {
@@ -433,11 +450,11 @@ export class GitHubService {
       );
 
       return true;
-    } catch (err: any) {
-      if (err?.status === 404) {
+    } catch (err: unknown) {
+      if (errorStatus(err) === 404) {
         return false;
       }
-      console.warn(`Failed to link installation for ${githubLogin}:`, err?.message || err);
+      console.warn(`Failed to link installation for ${githubLogin}:`, errorMessage(err));
       return false;
     }
   }
@@ -448,7 +465,7 @@ export class GitHubService {
    * prunes repos that were removed, and adds any new ones.
    */
   async syncInstallations(userId: string): Promise<{ removed: number; added: number }> {
-    const installations = await query<any[]>(
+    const installations = await query<DbRow[]>(
       `SELECT id, installation_id, account_login
        FROM github_installations
        WHERE user_id = ?`,
@@ -459,27 +476,27 @@ export class GitHubService {
     let totalAdded = 0;
 
     for (const inst of installations) {
-      const alive = await this.isInstallationAlive(inst.installation_id);
+      const alive = await this.isInstallationAlive(inst.installation_id as number);
 
       if (!alive) {
         // Installation was deleted or app was uninstalled — purge from DB
-        const deleted = await query<any>(
+        const deleted = await query<DbRow>(
           'DELETE FROM github_repositories WHERE installation_id = ?',
           [inst.id]
         );
-        totalRemoved += deleted.affectedRows ?? 0;
+        totalRemoved += (deleted.affectedRows as number | undefined) ?? 0;
 
         await query(
           'DELETE FROM github_installations WHERE id = ?',
           [inst.id]
         );
-        this.tokenCache.delete(inst.id);
+        this.tokenCache.delete(inst.id as string);
         console.log(`Sync: removed dead installation ${inst.account_login} (${inst.installation_id})`);
         continue;
       }
 
       // Installation is alive — reconcile repos
-      const result = await this.syncReposForInstallation(inst.id, inst.installation_id);
+      const result = await this.syncReposForInstallation(inst.id as string, inst.installation_id as number);
       totalRemoved += result.removed;
       totalAdded += result.added;
     }
@@ -491,13 +508,13 @@ export class GitHubService {
     try {
       await this.app.apps.getInstallation({ installation_id: githubInstallationId });
       return true;
-    } catch (err: any) {
+    } catch (err: unknown) {
       // 404 = deleted, 403 = app itself was deleted
-      if (err.status === 404 || err.status === 403) {
+      if (errorStatus(err) === 404 || errorStatus(err) === 403) {
         return false;
       }
       // Unknown error — assume alive to avoid accidental data loss
-      console.error(`Sync: unexpected error checking installation ${githubInstallationId}:`, err.message);
+      console.error(`Sync: unexpected error checking installation ${githubInstallationId}:`, errorMessage(err));
       return true;
     }
   }
@@ -523,30 +540,30 @@ export class GitHubService {
         octokit.apps.listReposAccessibleToInstallation,
         { per_page: 100 },
       );
-      liveRepos = (pages as any[]).map((r: any) => ({
+      liveRepos = (pages as { id: number; full_name: string; private: boolean; default_branch?: string }[]).map((r) => ({
         id: r.id,
         full_name: r.full_name,
         private: r.private,
         default_branch: r.default_branch || 'main',
       }));
-    } catch (err: any) {
-      console.error(`Sync: failed to list repos for installation ${internalId}:`, err.message);
+    } catch (err: unknown) {
+      console.error(`Sync: failed to list repos for installation ${internalId}:`, errorMessage(err));
       return { removed: 0, added: 0 };
     }
 
     const liveRepoIds = new Set(liveRepos.map(r => r.id));
 
     // Get what we have in DB
-    const dbRepos = await query<any[]>(
+    const dbRepos = await query<DbRow[]>(
       'SELECT id, github_repo_id FROM github_repositories WHERE installation_id = ?',
       [internalId]
     );
-    const dbRepoIds = new Set(dbRepos.map((r: any) => r.github_repo_id));
+    const dbRepoIds = new Set(dbRepos.map((r) => r.github_repo_id as number));
 
     // Remove repos that no longer exist on GitHub
     let removed = 0;
     for (const dbRepo of dbRepos) {
-      if (!liveRepoIds.has(dbRepo.github_repo_id)) {
+      if (!liveRepoIds.has(dbRepo.github_repo_id as number)) {
         await query('DELETE FROM github_repositories WHERE id = ?', [dbRepo.id]);
         removed++;
       }
@@ -554,10 +571,10 @@ export class GitHubService {
 
     // Add repos that exist on GitHub but not in DB (skip ones the user has explicitly hidden)
     const hiddenRepoIds = new Set(
-      (await query<any[]>(
+      (await query<DbRow[]>(
         'SELECT github_repo_id FROM github_repositories WHERE installation_id = ? AND user_hidden = true',
         [internalId]
-      )).map((r: any) => r.github_repo_id)
+      )).map((r) => r.github_repo_id as number)
     );
 
     let added = 0;

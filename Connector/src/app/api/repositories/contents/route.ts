@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { githubService } from '@/lib/github';
-import { query } from '@/lib/db';
+import { query, type DbRow } from '@/lib/db';
+import { errorMessage } from '@/lib/errors';
 
 export async function GET(request: NextRequest) {
   try {
@@ -17,7 +18,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get installation ID for this repo
-    const [repoData] = await query<any[]>(
+    const [repoData] = await query<DbRow[]>(
       `SELECT r.installation_id, i.id as installation_uuid, i.suspended_at
        FROM github_repositories r
        JOIN github_installations i ON i.id = r.installation_id
@@ -40,17 +41,17 @@ export async function GET(request: NextRequest) {
     }
 
     const contents = await githubService.getDirectoryContents(
-      repoData.installation_uuid,
+      repoData.installation_uuid as string,
       owner,
       repo,
       path
     );
 
     return NextResponse.json({ contents });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error fetching contents:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to fetch contents' },
+      { error: errorMessage(error, 'Failed to fetch contents') },
       { status: 500 }
     );
   }

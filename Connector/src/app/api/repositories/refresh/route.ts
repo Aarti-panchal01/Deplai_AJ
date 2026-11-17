@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { githubService } from '@/lib/github';
 import { requireAuth, verifyRepositoryOwnership } from '@/lib/auth';
+import { errorMessage } from '@/lib/errors';
 
 export async function POST(request: NextRequest) {
   try {
@@ -41,10 +42,10 @@ export async function POST(request: NextRequest) {
       success: true,
       message: 'Repository refreshed successfully' 
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error refreshing repository:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to refresh repository' },
+      { error: errorMessage(error, 'Failed to refresh repository') },
       { status: 500 }
     );
   }

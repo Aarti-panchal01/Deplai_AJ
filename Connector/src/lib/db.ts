@@ -14,6 +14,9 @@ const pool = mysql.createPool({
   queueLimit: 0,
 });
 
+/** A row returned by a SELECT: column values are unknown until narrowed at the call site. */
+export type DbRow = Record<string, unknown>;
+
 export async function query<T = unknown>(
   sql: string,
   params?: unknown[] | Record<string, unknown>

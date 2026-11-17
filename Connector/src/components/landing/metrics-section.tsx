@@ -222,6 +222,7 @@ export function MetricsSection() {
   const sectionRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- clock is set after mount to avoid a server/client hydration mismatch
     setTime(new Date());
     const interval = setInterval(() => setTime(new Date()), 1000);
     return () => clearInterval(interval);

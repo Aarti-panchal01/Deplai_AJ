@@ -14,6 +14,7 @@ export default function ThemeToggle() {
 
   useEffect(() => {
     const dark = localStorage.getItem('theme') !== 'light';
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- localStorage is only readable after mount (avoids hydration mismatch)
     setIsDark(dark);
     applyTheme(dark);
     setMounted(true);

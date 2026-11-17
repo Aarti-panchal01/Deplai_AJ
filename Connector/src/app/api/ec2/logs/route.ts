@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { Client } from 'ssh2';
+import { errorMessage } from '@/lib/errors';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,7 +42,7 @@ export async function POST(req: NextRequest) {
               return;
             }
 
-            stream.on('data', (data: any) => {
+            stream.on('data', (data: Buffer) => {
               if (streamActive) {
                 controller.enqueue(data);
                 const text = data.toString();
@@ -49,7 +50,7 @@ export async function POST(req: NextRequest) {
                   setTimeout(cleanup, 2000);
                 }
               }
-            }).stderr.on('data', (data: any) => {
+            }).stderr.on('data', (data: Buffer) => {
               if (streamActive) {
                 controller.enqueue(data);
               }
@@ -84,7 +85,7 @@ export async function POST(req: NextRequest) {
         'Cache-Control': 'no-cache',
       },
     });
-  } catch (error: any) {
-    return new Response(error.message, { status: 500 });
+  } catch (error: unknown) {
+    return new Response(errorMessage(error), { status: 500 });
   }
 }
