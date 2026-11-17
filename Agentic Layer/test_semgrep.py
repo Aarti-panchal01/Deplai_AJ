@@ -77,31 +77,50 @@ class ParseSemgrepFindingsTests(unittest.TestCase):
         self.assertEqual(parse_semgrep_findings('{"results": []}', PID), [])
 
 
-class MergeCodeSecurityTests(unittest.TestCase):
-    def test_semgrep_hits_already_reported_by_bearer_are_dropped(self):
-        bearer = [{
-            "cwe_id": "327", "title": "Usage of weak hashing library (MDx)", "severity": "medium",
-            "count": 1,
-            "occurrences": [{"filename": "app/app.py", "line_number": 141, "code_extract": "md5"}],
-        }]
-        semgrep_groups = result_parser._parse_semgrep_report(SAMPLE, PID)
-        merged = result_parser._merge_code_security(bearer, semgrep_groups)
+BEARER_SAMPLE = json.dumps({
+    "medium": [{
+        "id": "python_lang_weak_hash_md5",
+        "title": "Usage of weak hashing library (MDx)",
+        "cwe_ids": ["328"],
+        "filename": "app/app.py",
+        "line_number": 141,
+        "code_extract": "hash_pass = hashlib.md5(password).hexdigest()",
+        "documentation_url": "https://docs.bearer.com/x",
+    }]
+})
 
-        pairs = {(g["cwe_id"], o["filename"], o["line_number"]) for g in merged for o in g["occurrences"]}
-        self.assertEqual(len([p for p in pairs if p[0] == "327"]), 1)  # md5 counted once
-        self.assertIn(("89", "app/app.py", 261), pairs)
+
+class BuildCodeSecurityTests(unittest.TestCase):
+    def test_semgrep_and_bearer_reporting_the_same_md5_line_are_merged_once(self):
+        groups = result_parser.build_code_security(PID, bearer_raw=BEARER_SAMPLE, semgrep_raw=SAMPLE)
+        md5_hits = [o for g in groups for o in g["occurrences"] if o["line_number"] == 141]
+        self.assertEqual(len(md5_hits), 1)
+        self.assertEqual(md5_hits[0]["engines"], ["bearer", "semgrep"])
+        self.assertTrue(md5_hits[0]["corroborated"])
+        # the SQL injection only Semgrep found is still there
+        pairs = {(o["filename"], o["line_number"]) for g in groups for o in g["occurrences"]}
+        self.assertIn(("app/app.py", 261), pairs)
 
     def test_groups_are_sorted_by_severity_and_counted(self):
-        merged = result_parser._merge_code_security([], result_parser._parse_semgrep_report(SAMPLE, PID))
-        self.assertEqual([g["severity"] for g in merged], ["high", "medium", "medium", "low"])
-        self.assertTrue(all(g["count"] == len(g["occurrences"]) for g in merged))
+        groups = result_parser.build_code_security(PID, semgrep_raw=SAMPLE)
+        order = ["critical", "high", "medium", "low"]
+        self.assertEqual([order.index(g["severity"]) for g in groups], sorted(order.index(g["severity"]) for g in groups))
+        self.assertTrue(all(g["count"] == len(g["occurrences"]) for g in groups))
 
-    def test_semgrep_groups_have_the_same_shape_as_bearer_groups(self):
-        group = result_parser._parse_semgrep_report(SAMPLE, PID)[0]
-        for key in ("cwe_id", "title", "severity", "occurrences"):
+    def test_groups_keep_the_shape_the_dashboard_renders(self):
+        group = result_parser.build_code_security(PID, semgrep_raw=SAMPLE)[0]
+        for key in ("cwe_id", "title", "severity", "count", "occurrences", "engines"):
             self.assertIn(key, group)
-        for key in ("filename", "line_number", "code_extract", "documentation_url"):
+        for key in ("filename", "line_number", "code_extract", "documentation_url", "engines", "corroborated"):
             self.assertIn(key, group["occurrences"][0])
+
+    def test_an_unreadable_optional_report_is_skipped_not_fatal(self):
+        groups = result_parser.build_code_security(PID, bearer_raw=BEARER_SAMPLE, semgrep_raw="{broken", bandit_raw="[]")
+        self.assertEqual(len(groups), 1)
+
+    def test_an_unreadable_bearer_report_still_raises(self):
+        with self.assertRaises(Exception):
+            result_parser.build_code_security(PID, bearer_raw='{"medium": [')
 
 
 class BuildCommandTests(unittest.TestCase):

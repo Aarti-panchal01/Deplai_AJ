@@ -22,6 +22,10 @@ interface Occurrence {
   line_number: number;
   code_extract: string;
   documentation_url: string;
+  /** Static-analysis engines that reported this finding (Bearer, Semgrep, Bandit). */
+  engines?: string[];
+  /** True when two or more independent engines agree. */
+  corroborated?: boolean;
 }
 
 interface CWEGroup {
@@ -293,6 +297,14 @@ function CWEAccordion({ group }: { group: CWEGroup }) {
                     </svg>
                     <span className="text-foreground font-mono text-xs truncate">{occ.filename}</span>
                     <span className="text-muted/70 text-xs shrink-0 font-mono">:{occ.line_number}</span>
+                    {occ.engines && occ.engines.length > 0 ? (
+                      <span
+                        className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold capitalize ${occ.corroborated ? 'bg-emerald-500/15 text-emerald-400' : 'bg-zinc-800 text-zinc-400'}`}
+                        title={occ.corroborated ? 'Reported by more than one independent engine' : 'Reported by one engine'}
+                      >
+                        {occ.engines.join(' + ')}
+                      </span>
+                    ) : null}
                   </div>
                   {occ.documentation_url && (
                     <a

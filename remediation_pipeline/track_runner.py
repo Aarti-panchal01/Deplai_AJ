@@ -87,6 +87,7 @@ class RemediationTrackRunner(RunnerBase):
         from bearer import run_bearer_scan
         from result_parser import invalidate_cache
         from sbom import run_grype_scan, run_syft_scan
+        from bandit_scanner import bandit_enabled, run_bandit_scan
         from semgrep import run_semgrep_scan, semgrep_enabled
 
         await self._send_message("phase", "Running verification security scan")
@@ -97,11 +98,13 @@ class RemediationTrackRunner(RunnerBase):
         ]
         if semgrep_enabled():
             scan_steps.append(("Semgrep", lambda: run_semgrep_scan(self.context.project_name, self.context.project_id)))
+        if bandit_enabled():
+            scan_steps.append(("Bandit", lambda: run_bandit_scan(self.context.project_name, self.context.project_id)))
         scan_steps += [
             ("Syft", lambda: run_syft_scan(self.context.project_name, self.context.project_id)),
             ("Grype", lambda: run_grype_scan(self.context.project_name, self.context.project_id)),
         ]
-        sast_labels = {"Bearer", "Semgrep"}
+        sast_labels = {"Bearer", "Semgrep", "Bandit"}
         sast_ok: list[bool] = []
         for label, scan_step in scan_steps:
             ok, message = await self._run_step(scan_step)

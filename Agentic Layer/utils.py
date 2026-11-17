@@ -7,12 +7,12 @@ import docker
 _docker_client: docker.DockerClient | None = None
 
 SEVERITY_LEVELS = ["critical", "high", "medium", "low"]
-SCANNER_SUFFIXES = ["Bearer.json", "Semgrep.json", "sbom.json", "Grype.json"]
+SCANNER_SUFFIXES = ["Bearer.json", "Semgrep.json", "Bandit.json", "sbom.json", "Grype.json"]
 
 # Static-analysis engines. A scan is usable when at least one of them succeeded, so a
 # single engine failing (e.g. Semgrep without internet, Bearer on an unsupported CPU)
 # does not discard the other engine's findings.
-SAST_TOOLS = ("Bearer", "Semgrep")
+SAST_TOOLS = ("Bearer", "Semgrep", "Bandit")
 
 
 def sast_scans_ok(results: list[tuple[bool, str, str]]) -> bool:

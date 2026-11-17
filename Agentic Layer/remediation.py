@@ -20,6 +20,7 @@ from models import RemediationRequest, StreamStatus, WebSocketCommand
 from result_parser import invalidate_cache
 from runner_base import RunnerBase
 from sbom import run_grype_scan, run_syft_scan
+from bandit_scanner import bandit_enabled, run_bandit_scan
 from semgrep import run_semgrep_scan, semgrep_enabled
 from utils import sast_scans_ok, CODEBASE_VOLUME, LLM_OUTPUT_VOLUME, decode_output, get_docker_client, redact_git_token, resolve_host_projects_dir, set_current_project_id
 
@@ -837,6 +838,12 @@ echo "PUSHED"
             )
             return (success, error_msg, "Semgrep")
 
+        async def bandit_branch() -> tuple[bool, str, str]:
+            success, error_msg = await self._run_step(
+                lambda: run_bandit_scan(project_name, project_id)
+            )
+            return (success, error_msg, "Bandit")
+
         async def sbom_branch() -> tuple[bool, str, str]:
             success, error_msg = await self._run_step(
                 lambda: run_syft_scan(project_name, project_id)
@@ -851,6 +858,8 @@ echo "PUSHED"
         branches = [bearer_branch(), sbom_branch()]
         if semgrep_enabled():
             branches.append(semgrep_branch())
+        if bandit_enabled():
+            branches.append(bandit_branch())
         results = await asyncio.gather(*branches)
         for success, error_msg, tool_name in results:
             if success:

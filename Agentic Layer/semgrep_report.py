@@ -70,6 +70,8 @@ def parse_semgrep_findings(raw: str, project_id: str) -> list[dict[str, Any]]:
         message = str(extra.get("message") or "")
         references = metadata.get("references")
         findings.append({
+            "engine": "semgrep",
+            "code_extract": "",  # Semgrep withholds source lines for registry rules unless logged in
             "rule_id": rule_id,
             "title": _title(message, rule_id),
             "message": message,
@@ -77,6 +79,7 @@ def parse_semgrep_findings(raw: str, project_id: str) -> list[dict[str, Any]]:
             "cwe_id": _cwe_number(metadata),
             "filename": filename,
             "line_number": line,
+            "start_line": line,
             "end_line": max(line, end_line),
             "documentation_url": str(metadata.get("shortlink") or (references[0] if isinstance(references, list) and references else "")),
         })

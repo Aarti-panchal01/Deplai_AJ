@@ -7,10 +7,11 @@ from models import ScanContext, StreamStatus
 from runner_base import RunnerBase
 from bearer import run_bearer_scan
 from sbom import run_syft_scan, run_grype_scan
+from bandit_scanner import BANDIT_IMAGE, bandit_enabled, run_bandit_scan
 from semgrep import SEMGREP_IMAGE, run_semgrep_scan, semgrep_enabled
 from utils import sast_scans_ok, ensure_docker_image, get_docker_client, decode_output, VOLUME_NAMES, CODEBASE_VOLUME, SECURITY_REPORTS_VOLUME, resolve_host_projects_dir, set_current_project_id
 
-TOTAL_STEPS = 14
+TOTAL_STEPS = 15
 CONTAINER_OP_TIMEOUT = int(os.getenv("CONTAINER_OP_TIMEOUT", "120"))  # seconds for volume/clone ops
 SCAN_IMAGES = (
     "alpine",
@@ -18,7 +19,7 @@ SCAN_IMAGES = (
     "bearer/bearer:latest-amd64",
     "anchore/syft",
     "anchore/grype",
-) + ((SEMGREP_IMAGE,) if semgrep_enabled() else ())
+) + ((SEMGREP_IMAGE,) if semgrep_enabled() else ()) + ((BANDIT_IMAGE,) if bandit_enabled() else ())
 
 
 class EnvironmentInitializer(RunnerBase):
@@ -305,6 +306,12 @@ class EnvironmentInitializer(RunnerBase):
             )
             return (success, error_msg, "Semgrep")
 
+        async def bandit_branch() -> tuple[bool, str, str]:
+            success, error_msg = await self._run_step(
+                lambda: run_bandit_scan(p_name, p_id)
+            )
+            return (success, error_msg, "Bandit")
+
         async def sbom_branch() -> tuple[bool, str, str]:
             success, error_msg = await self._run_step(
                 lambda: run_syft_scan(p_name, p_id)
@@ -323,6 +330,9 @@ class EnvironmentInitializer(RunnerBase):
             if semgrep_enabled():
                 await self._send_message("info", "Starting Semgrep code security scanner...")
                 tasks.append(semgrep_branch())
+            if bandit_enabled():
+                await self._send_message("info", "Starting Bandit Python security scanner...")
+                tasks.append(bandit_branch())
         if scan_type in ("sca", "all"):
             await self._send_message("info", "Starting Syft SBOM generation and Grype vulnerability scan (can be long on large repos)...")
             tasks.append(sbom_branch())

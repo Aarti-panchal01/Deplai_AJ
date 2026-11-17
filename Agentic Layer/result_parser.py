@@ -4,6 +4,8 @@ import threading
 
 import docker
 
+from bandit_report import parse_bandit_findings
+from code_findings import group_findings, merge_findings
 from semgrep_report import parse_semgrep_findings
 from utils import SEVERITY_LEVELS, read_volume_file, find_volume_file, get_docker_client
 
@@ -60,46 +62,58 @@ def _parse_bearer_report(raw: str) -> list[dict]:
     return findings
 
 
-def _parse_semgrep_report(raw: str, project_id: str) -> list[dict]:
-    """Parse Semgrep JSON into the same CWE-grouped shape as the Bearer findings."""
-    groups: dict[tuple[str, str, str], dict] = {}
-    for item in parse_semgrep_findings(raw, project_id):
-        key = (item["cwe_id"], item["severity"], item["title"])
-        group = groups.setdefault(key, {
-            "cwe_id": item["cwe_id"],
-            "title": item["title"],
-            "severity": item["severity"],
-            "source": "semgrep",
-            "occurrences": [],
-        })
-        group["occurrences"].append({
-            "filename": item["filename"],
-            "line_number": item["line_number"],
-            # Semgrep withholds source lines for registry rules unless logged in.
-            "code_extract": "",
-            "documentation_url": item["documentation_url"],
-            "rule_id": item["rule_id"],
-        })
-    return list(groups.values())
+def _bearer_findings(raw: str, project_id: str) -> list[dict]:
+    """Flat, normalized Bearer findings (the same shape Semgrep and Bandit produce)."""
+    raw = (raw or "").strip()
+    if not raw.startswith("{"):
+        return []
+    data = json.loads(raw)
+    findings = []
+    for severity in SEVERITY_LEVELS:
+        for item in data.get(severity, []):
+            cwe_ids = item.get("cwe_ids", [])
+            filename = item.get("filename", "")
+            if filename.startswith("/tmp/scan/"):
+                filename = filename[len("/tmp/scan/"):]
+            if filename.startswith(f"{project_id}/"):
+                filename = filename[len(project_id) + 1:]
+            findings.append({
+                "engine": "bearer",
+                "rule_id": str(item.get("id") or ""),
+                "title": item.get("title", ""),
+                "severity": severity,
+                "cwe_id": str(cwe_ids[0]) if cwe_ids else "unknown",
+                "filename": filename,
+                "line_number": item.get("line_number", 0),
+                "code_extract": item.get("code_extract", ""),
+                "documentation_url": item.get("documentation_url", ""),
+            })
+    return findings
 
 
-def _merge_code_security(bearer_groups: list[dict], semgrep_groups: list[dict]) -> list[dict]:
-    """Combine Bearer and Semgrep groups; drop Semgrep hits that Bearer already reported
-    for the same CWE/file/line, then re-sort the way the Bearer-only report was."""
-    seen = {
-        (g["cwe_id"], o["filename"], o["line_number"])
-        for g in bearer_groups
-        for o in g["occurrences"]
-    }
-    merged = [dict(g) for g in bearer_groups]
-    for group in semgrep_groups:
-        fresh = [o for o in group["occurrences"] if (group["cwe_id"], o["filename"], o["line_number"]) not in seen]
-        if fresh:
-            merged.append({**group, "occurrences": fresh})
-    severity_order = {s: i for i, s in enumerate(SEVERITY_LEVELS)}
-    for g in merged:
-        g["count"] = len(g["occurrences"])
-    return sorted(merged, key=lambda g: (severity_order.get(g["severity"], 99), -g["count"]))
+def build_code_security(
+    project_id: str,
+    bearer_raw: str | None = None,
+    semgrep_raw: str | None = None,
+    bandit_raw: str | None = None,
+) -> list[dict]:
+    """Merge every available SAST report into the dashboard's CWE-grouped shape.
+
+    Bearer is the original engine, so a Bearer report that cannot be parsed still raises (callers
+    report it); Semgrep and Bandit are additive, so an unreadable report from them is logged and
+    skipped instead of discarding the other engines' findings.
+    """
+    findings = _bearer_findings(bearer_raw or "", project_id)
+    for name, raw, parser in (
+        ("Semgrep", semgrep_raw, parse_semgrep_findings),
+        ("Bandit", bandit_raw, parse_bandit_findings),
+    ):
+        if raw and raw.strip():
+            try:
+                findings += parser(raw, project_id)
+            except Exception as e:
+                logger.warning("Ignoring unreadable %s report for %s: %s", name, project_id, e)
+    return group_findings(merge_findings(findings))
 
 
 def _parse_grype_report(raw: str) -> list[dict]:
@@ -151,37 +165,28 @@ def _load_and_cache(project_id: str) -> tuple[bool, dict | str]:
 
         bearer_file = find_volume_file(project_id, "Bearer.json")
         semgrep_file = find_volume_file(project_id, "Semgrep.json")
+        bandit_file = find_volume_file(project_id, "Bandit.json")
         grype_file = find_volume_file(project_id, "Grype.json")
 
         bearer_raw = read_volume_file(bearer_file) if bearer_file else None
         semgrep_raw = read_volume_file(semgrep_file) if semgrep_file else None
+        bandit_raw = read_volume_file(bandit_file) if bandit_file else None
         grype_raw = read_volume_file(grype_file) if grype_file else None
 
-        if bearer_raw is None and semgrep_raw is None and grype_raw is None:
+        if bearer_raw is None and semgrep_raw is None and bandit_raw is None and grype_raw is None:
             return (False, "No scan reports found. Run a scan first.")
 
-        # An empty Bearer report is only fatal when Semgrep did not produce one either.
-        if bearer_file and bearer_raw is not None and not bearer_raw.strip() and not (semgrep_raw or "").strip():
+        # An empty Bearer report is only fatal when no other SAST engine produced a report either.
+        other_sast = (semgrep_raw or "").strip() or (bandit_raw or "").strip()
+        if bearer_file and bearer_raw is not None and not bearer_raw.strip() and not other_sast:
             return (False, "Bearer report is empty; scan may have failed.")
         if grype_file and grype_raw is not None and not grype_raw.strip():
             return (False, "Grype report is empty; scan may have failed.")
 
-        bearer_groups = []
-        if bearer_raw and bearer_raw.strip():
-            try:
-                bearer_groups = _parse_bearer_report(bearer_raw)
-            except Exception as e:
-                return (False, f"Failed to parse Bearer report: {e}")
-
-        semgrep_groups = []
-        if semgrep_raw and semgrep_raw.strip():
-            try:
-                semgrep_groups = _parse_semgrep_report(semgrep_raw, project_id)
-            except Exception as e:
-                # Semgrep is additive; keep the Bearer/Grype results if its report is unreadable.
-                logger.warning("Ignoring unreadable Semgrep report for %s: %s", project_id, e)
-
-        code_security = _merge_code_security(bearer_groups, semgrep_groups)
+        try:
+            code_security = build_code_security(project_id, bearer_raw, semgrep_raw, bandit_raw)
+        except Exception as e:
+            return (False, f"Failed to parse Bearer report: {e}")
 
         supply_chain = []
         if grype_raw:

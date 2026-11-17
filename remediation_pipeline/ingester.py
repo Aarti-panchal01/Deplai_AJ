@@ -6,6 +6,8 @@ from typing import Any
 import functools
 
 from remediation_pipeline.models import Vulnerability
+from bandit_report import parse_bandit_findings
+from code_findings import adjust_severity, family_of
 from semgrep_report import parse_semgrep_findings
 from utils import CODEBASE_VOLUME, decode_output, find_volume_file, get_docker_client, read_volume_file
 
@@ -42,28 +44,39 @@ class VulnIngester:
         return vulns
 
     def _read_sast(self, project_id: str) -> list[Vulnerability]:
+        """Bearer first, then Semgrep and Bandit. The same bug reported by several engines (even under
+        different CWE ids) is kept once, using the same family/file/line clustering as the dashboard."""
         bearer = self._read_bearer(project_id)
-        known = {(v.cwe, v.file, v.line_start) for v in bearer}
-        semgrep = [v for v in self._read_semgrep(project_id) if (v.cwe, v.file, v.line_start) not in known]
-        return bearer + semgrep
 
-    def _read_semgrep(self, project_id: str) -> list[Vulnerability]:
-        report = find_volume_file(project_id, "Semgrep.json")
+        def cluster(v: Vulnerability) -> tuple[str, str, int]:
+            return (family_of({"rule_id": v.rule_id, "title": v.description, "cwe_id": v.cwe}), v.file, v.line_start)
+
+        seen = {cluster(v) for v in bearer}
+        extra: list[Vulnerability] = []
+        for vuln in self._read_semgrep(project_id) + self._read_bandit(project_id):
+            key = cluster(vuln)
+            if key not in seen:
+                seen.add(key)
+                extra.append(vuln)
+        return bearer + extra
+
+    def _read_engine(self, project_id: str, suffix: str, parser, id_prefix: str) -> list[Vulnerability]:
+        report = find_volume_file(project_id, suffix)
         raw = read_volume_file(report) if report else None
         if not raw:
             return []
         try:
-            findings = parse_semgrep_findings(raw, project_id)
+            findings = parser(raw, project_id)
         except Exception:
             return []
         return [
             Vulnerability(
-                id=f"semgrep:{f['rule_id']}:{f['filename']}:{f['line_number']}",
+                id=f"{id_prefix}:{f['rule_id']}:{f['filename']}:{f['line_number']}",
                 file=f["filename"],
                 line_start=f["line_number"],
                 line_end=f["end_line"],
                 rule_id=f["rule_id"],
-                severity=f["severity"],
+                severity=adjust_severity(f),
                 description=f["title"],
                 cwe=f["cwe_id"] if f["cwe_id"] != "unknown" else None,
                 type="sast",
@@ -71,6 +84,12 @@ class VulnIngester:
             for f in findings
             if f["filename"]
         ]
+
+    def _read_semgrep(self, project_id: str) -> list[Vulnerability]:
+        return self._read_engine(project_id, "Semgrep.json", parse_semgrep_findings, "semgrep")
+
+    def _read_bandit(self, project_id: str) -> list[Vulnerability]:
+        return self._read_engine(project_id, "Bandit.json", parse_bandit_findings, "bandit")
 
     def _read_bearer(self, project_id: str) -> list[Vulnerability]:
         report = find_volume_file(project_id, "Bearer.json")

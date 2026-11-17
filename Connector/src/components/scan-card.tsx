@@ -31,7 +31,7 @@ const SCAN_OPTIONS = [
     id: 'sast' as ScanType,
     label: 'SAST',
     sublabel: 'Static Application Security Testing',
-    description: 'Scans source code for vulnerabilities, hardcoded secrets, and insecure patterns using Bearer and Semgrep.',
+    description: 'Scans source code for vulnerabilities, hardcoded secrets, and insecure patterns using Bearer, Semgrep and Bandit.',
     Icon: FiCode,
     colorCls: 'bg-indigo-500/15 border-indigo-500/30 text-indigo-400',
   },

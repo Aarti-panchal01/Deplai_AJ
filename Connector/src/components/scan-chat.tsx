@@ -42,7 +42,7 @@ const SCAN_TYPE_OPTIONS = [
     id: 'sast' as ScanType,
     label: 'SAST',
     sublabel: 'Static Code Analysis',
-    desc: 'Scans source code for vulnerabilities and secrets using Bearer and Semgrep.',
+    desc: 'Scans source code for vulnerabilities and secrets using Bearer, Semgrep and Bandit.',
     colorCls: 'bg-indigo-500/15 border-indigo-500/30 text-indigo-400',
     Icon: FiCode,
   },
