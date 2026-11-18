@@ -16,7 +16,7 @@
     "@tanstack/react-table": "^8.21.3",
     "@types/ssh2": "^1.15.5",
     "@types/ws": "^8.18.1",
-    "adm-zip": "^0.5.16",
+    "adm-zip": "^0.6.1",
     "framer-motion": "^12.28.1",
     "gsap": "^3.14.2",
     "iron-session": "^8.0.4",
