@@ -2,13 +2,13 @@
 
 # The build context is the repository root. Build through docker-compose.production.yml
 # so the lockfile and the full Connector source are copied consistently.
-FROM node:20-bookworm-slim AS dependencies
+FROM node:26-bookworm-slim AS dependencies
 
 WORKDIR /app
 COPY Connector/package.json Connector/package-lock.json ./
 RUN npm ci
 
-FROM node:20-bookworm-slim AS builder
+FROM node:26-bookworm-slim AS builder
 
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
@@ -23,7 +23,7 @@ COPY --from=dependencies /app/node_modules ./node_modules
 COPY Connector/ ./
 RUN npm run build
 
-FROM node:20-bookworm-slim AS runner
+FROM node:26-bookworm-slim AS runner
 
 WORKDIR /app
 ENV NODE_ENV=production \
