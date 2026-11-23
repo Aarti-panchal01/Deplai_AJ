@@ -2,7 +2,7 @@
 
 # Use the official Node distribution for customization quality gates and previews,
 # while keeping Python 3.13 for the FastAPI application.
-FROM node:20-bookworm-slim AS node-runtime
+FROM node:26-bookworm-slim AS node-runtime
 
 FROM python:3.13-slim-bookworm
 
