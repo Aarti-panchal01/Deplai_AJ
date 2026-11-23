@@ -3,7 +3,7 @@
 # Build this image from the repository root. The Agentic Layer imports the
 # Terraform Agent, remediation pipeline, and diagram/cost agent at
 # runtime, so a production image must package all of them together.
-FROM python:3.13-slim-bookworm
+FROM python:3.15-slim-bookworm
 
 ARG TERRAFORM_VERSION=1.9.5
 ARG TFLINT_VERSION=0.53.0
